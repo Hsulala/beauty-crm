@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>登入｜店家總覽</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <h1>店家總覽</h1>
+    <p class="muted">美業預約系統的店家登錄與管理</p>
+    <form id="login-form" autocomplete="on">
+      <label for="password">密碼</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+      <p id="login-error" class="field-error" role="alert" hidden></p>
+      <button type="submit" class="btn primary">登入</button>
+    </form>
+  </main>
+  <script type="module" src="/login.js"></script>
+</body>
+</html>

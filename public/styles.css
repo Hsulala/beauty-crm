@@ -1,0 +1,144 @@
+:root {
+  --paper: #eef1ef;
+  --panel: #fbfcfb;
+  --ink: #17262d;
+  --muted: #566a71;
+  --rule: #d3dcd9;
+  --accent: #1d6670;
+  --accent-ink: #ffffff;
+  --accent-soft: #d9ebec;
+  --ok: #2e6b4a;
+  --warn: #8a5a08;
+  --warn-soft: #f8e8c6;
+  --danger: #a1382a;
+  --danger-soft: #f5dad4;
+  --font: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", "Heiti TC", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--paper); }
+body { margin: 0; color: var(--ink); font: 15px/1.6 var(--font); font-variant-numeric: tabular-nums; }
+h1, h2 { line-height: 1.25; margin: 0; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.hint { color: var(--muted); font-size: 12.5px; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* 按鈕 */
+.btn { font: inherit; font-weight: 600; border: 1px solid var(--rule); background: var(--panel); color: var(--ink); padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { background: #17535b; }
+.btn.quiet { background: transparent; }
+.btn.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+.btn.danger:hover { background: var(--danger-soft); }
+.link { font: inherit; font-weight: 600; background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; }
+
+/* 頁首 */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 24px; border-bottom: 1px solid var(--rule); background: var(--panel); }
+.top h1 { font-size: 22px; letter-spacing: 0.02em; }
+.top-actions { display: flex; gap: 8px; }
+main { max-width: 1080px; margin: 0 auto; padding: 24px; }
+
+/* 總覽數字：平鋪的一排，不做成卡片 */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--rule); }
+.stat { padding: 14px 16px 14px 0; }
+.stat + .stat { padding-left: 16px; border-left: 1px solid var(--rule); }
+.stat dt { color: var(--muted); font-size: 13px; }
+.stat dd { margin: 2px 0 4px; font-size: 26px; font-weight: 700; line-height: 1.2; }
+.stat.is-warn dd { color: var(--warn); }
+.stat.is-danger dd { color: var(--danger); }
+
+/* 需要處理的合約 */
+.attention { margin-top: 16px; padding: 12px 16px; background: var(--warn-soft); border-left: 4px solid var(--warn); }
+.attention h2 { font-size: 15px; margin-bottom: 6px; }
+.attention ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.attention li { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.tag { font-size: 13px; font-weight: 600; }
+.tag.is-expired { color: var(--danger); }
+.tag.is-soon { color: var(--warn); }
+
+/* 篩選 */
+.filters { display: flex; flex-wrap: wrap; gap: 4px; margin: 24px 0 12px; }
+.filter { font: inherit; background: transparent; border: 0; border-bottom: 3px solid transparent; padding: 6px 12px; color: var(--muted); cursor: pointer; }
+.filter:hover { color: var(--ink); }
+.filter.is-active { color: var(--ink); font-weight: 700; border-bottom-color: var(--accent); }
+
+/* 店家列表 */
+.store-list { display: grid; gap: 0; border-top: 1px solid var(--rule); }
+.store { display: grid; grid-template-columns: minmax(0, 2.2fr) 90px 150px minmax(0, 2fr) minmax(0, 1.4fr) 64px; gap: 16px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--rule); }
+.store-main { min-width: 0; }
+.store-main h2 { font-size: 17px; overflow-wrap: anywhere; }
+.notes { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.store.status-ended .store-main h2 { color: var(--muted); }
+.store-fee { display: grid; }
+.store-fee .fee { font-weight: 600; }
+.store-url a { color: var(--accent); overflow-wrap: anywhere; font-size: 14px; }
+.store-actions { text-align: right; }
+
+.badge { display: inline-block; white-space: nowrap; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--paper); color: var(--muted); border: 1px solid var(--rule); }
+.badge.is-running { background: #dcefe3; color: var(--ok); border-color: #b9dcc7; }
+.badge.is-building { background: var(--accent-soft); color: var(--accent); border-color: #b4d5d8; }
+.badge.is-paused { background: var(--warn-soft); color: var(--warn); border-color: #ecd49a; }
+
+/* 合約進度：條的長度是合約已走過的比例 */
+.bar { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
+.bar-fill { display: block; height: 100%; width: 0; background: var(--accent); }
+.bar-fill.is-soon { background: var(--warn); }
+.bar-fill.is-expired { background: var(--danger); }
+.bar-fill.is-ended { background: var(--muted); }
+.contract-text { font-size: 13.5px; }
+.contract-text.is-soon { color: var(--warn); font-weight: 600; }
+.contract-text.is-expired { color: var(--danger); font-weight: 600; }
+.contract-text.is-none, .contract-text.is-ended { color: var(--muted); }
+
+.empty { padding: 32px 0; color: var(--muted); }
+
+/* 異動紀錄 */
+.audit { margin-top: 32px; }
+.audit summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+.audit-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; font-size: 14px; }
+.audit-list li { display: grid; grid-template-columns: 170px minmax(0, 1fr); column-gap: 12px; }
+.audit-list time { color: var(--muted); }
+.audit-list .muted { grid-column: 2; }
+
+/* 對話框 */
+dialog { width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; border: 1px solid var(--rule); border-radius: 10px; padding: 0; background: var(--panel); color: var(--ink); }
+dialog::backdrop { background: rgba(23, 38, 45, 0.45); }
+dialog form { padding: 22px; display: grid; gap: 14px; }
+dialog h2 { font-size: 19px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+label { font-size: 13.5px; font-weight: 600; color: var(--muted); }
+input, select, textarea { font: inherit; color: var(--ink); width: 100%; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 6px; background: #fff; }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+textarea { resize: vertical; }
+.field-error { color: var(--danger); font-size: 13.5px; }
+.dialog-actions { display: flex; align-items: center; gap: 8px; padding-top: 6px; }
+.spacer { flex: 1; }
+
+/* 登入頁 */
+.login-page { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+.login-card { width: min(380px, 100%); background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 28px; display: grid; gap: 6px; }
+.login-card h1 { font-size: 24px; }
+.login-card form { display: grid; gap: 8px; margin-top: 16px; }
+.login-card .btn { margin-top: 8px; }
+
+@media (max-width: 860px) {
+  main { padding: 16px; }
+  .top { padding: 14px 16px; }
+  .stats { grid-template-columns: 1fr 1fr; }
+  .stat:nth-child(3) { border-left: 0; padding-left: 0; }
+  .stat:nth-child(n + 3) { border-top: 1px solid var(--rule); }
+  .store { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; }
+  .store-main { grid-column: 1; min-width: 0; }
+  .store-status { grid-column: 2; justify-self: end; }
+  .store-fee, .store-contract, .store-url { grid-column: 1 / -1; }
+  .store-actions { grid-column: 1 / -1; text-align: left; }
+  .audit-list li { grid-template-columns: 1fr; }
+  .audit-list .muted { grid-column: 1; }
+}
+@media (max-width: 480px) {
+  .field-row { grid-template-columns: 1fr; }
+}

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>店家總覽</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="top">
+    <h1>店家總覽</h1>
+    <div class="top-actions">
+      <button type="button" id="add-btn" class="btn primary">新增店家</button>
+      <button type="button" id="logout-btn" class="btn quiet">登出</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="summary" class="summary" aria-live="polite" aria-label="總覽數字"></section>
+
+    <section id="attention" class="attention" hidden></section>
+
+    <div class="filters" role="group" aria-label="依狀態篩選">
+      <button type="button" class="filter is-active" data-filter="all">全部</button>
+      <button type="button" class="filter" data-filter="running">運作中</button>
+      <button type="button" class="filter" data-filter="building">建置中</button>
+      <button type="button" class="filter" data-filter="paused">暫停</button>
+      <button type="button" class="filter" data-filter="ended">已結束</button>
+    </div>
+
+    <section id="list" class="store-list" aria-label="店家清單"></section>
+
+    <details class="audit">
+      <summary>異動紀錄</summary>
+      <ol id="audit-list" class="audit-list"></ol>
+    </details>
+  </main>
+
+  <dialog id="store-dialog" aria-labelledby="dialog-title">
+    <form id="store-form" novalidate>
+      <h2 id="dialog-title">新增店家</h2>
+
+      <div class="field">
+        <label for="f-name">店名</label>
+        <input id="f-name" name="name" type="text" maxlength="60" required>
+        <p class="field-error" data-error="name" hidden></p>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="f-system_type">系統</label>
+          <select id="f-system_type" name="system_type">
+            <option value="heyu">禾域 HEYU（按摩）</option>
+            <option value="skin">妍序 Skin（皮膚管理）</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-status">狀態</label>
+          <select id="f-status" name="status">
+            <option value="building">建置中</option>
+            <option value="running">運作中</option>
+            <option value="paused">暫停</option>
+            <option value="ended">已結束</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="f-monthly_fee">月費（NT$，只計入運作中的店家）</label>
+        <input id="f-monthly_fee" name="monthly_fee" type="number" min="0" max="1000000" step="1" inputmode="numeric" value="0">
+        <p class="field-error" data-error="monthly_fee" hidden></p>
+      </div>
+
+      <div class="field">
+        <label for="f-url">網址</label>
+        <input id="f-url" name="url" type="url" placeholder="https://" maxlength="300">
+        <p class="field-error" data-error="url" hidden></p>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="f-contract_start">合約起日</label>
+          <input id="f-contract_start" name="contract_start" type="date">
+          <p class="field-error" data-error="contract_start" hidden></p>
+        </div>
+        <div class="field">
+          <label for="f-contract_end">合約到期日</label>
+          <input id="f-contract_end" name="contract_end" type="date">
+          <p class="field-error" data-error="contract_end" hidden></p>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="f-notes">備註</label>
+        <textarea id="f-notes" name="notes" rows="4" maxlength="2000"></textarea>
+        <p class="field-error" data-error="notes" hidden></p>
+      </div>
+
+      <p class="field-error" id="form-error" role="alert" hidden></p>
+
+      <div class="dialog-actions">
+        <button type="button" id="delete-btn" class="btn danger" hidden>刪除店家</button>
+        <span class="spacer"></span>
+        <button type="button" id="cancel-btn" class="btn quiet">取消</button>
+        <button type="submit" class="btn primary">儲存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

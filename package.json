@@ -1,0 +1,24 @@
+{
+  "name": "beauty-crm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "美業店家 CRM：統一登錄與管理禾域、妍序等多家店家的總覽後台",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "migrate": "node scripts/migrate.js",
+    "seed": "node scripts/seed.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}
