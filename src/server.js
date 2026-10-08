@@ -1,18 +1,22 @@
-import { join } from 'node:path';
-import { createApp } from './app.js';
-import { loadConfig } from './config.js';
-import { createPgDb, createPgliteDb } from './db.js';
-import { migrate } from './migrate.js';
+require('dotenv').config();
+const { createApp } = require('./app');
+const { pool } = require('./db');
+const { runMigrations } = require('./migrate');
+const scheduler = require('./scheduler');
 
-let config;
-try { config = loadConfig(); }
-catch (error) { console.error(error.message); process.exit(1); }
+async function main() {
+  // 啟動時自動套用新的 migration（只會跑還沒跑過的編號檔），不需要再手動進 Railway shell。
+  const ran = await runMigrations(pool);
+  if (ran.length) console.log(`[server] 已套用 migration：${ran.join(', ')}`);
 
-const root = join(import.meta.dirname, '..');
-const db = config.databaseUrl ? createPgDb(config.databaseUrl) : await createPgliteDb(join(root, '.pglite'));
-const ran = await migrate(db, join(root, 'migrations'));
-if (ran.length) console.log(`已套用 migration：${ran.join(', ')}`);
+  const port = process.env.PORT || 3000;
+  createApp().listen(port, () => {
+    console.log(`[server] 妍序 Skin 預約系統啟動，port ${port}`);
+    scheduler.start();
+  });
+}
 
-const app = createApp({ db, config });
-const server = app.listen(config.port, () => console.log(`店家 CRM 已啟動：port ${config.port}`));
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.close(() => db.close().finally(() => process.exit(0))));
+main().catch((err) => {
+  console.error('[server] 啟動失敗', err);
+  process.exit(1);
+});

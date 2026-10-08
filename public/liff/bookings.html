@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>我的預約｜妍序 Skin</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root{
+    --bg:#FBF3F1; --surface:#FFFDFB; --surface-2:#F6E9E8; --border:#E9D3D2;
+    --text:#3A2A2C; --text-muted:#9C7C7C; --accent:#C57C82; --accent-strong:#A65A61;
+    --accent-soft:#F1D9D8; --gold:#C79A5B; --danger:#B3453A;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; color:var(--text); font-family:'PingFang TC','Microsoft JhengHei',sans-serif;
+    background-color:#FBF1EF;
+    background-image:
+      radial-gradient(ellipse 700px 500px at 0% -10%, #FCE7E4 0%, transparent 55%),
+      radial-gradient(ellipse 700px 500px at 100% 0%, #F3E0DA 0%, transparent 55%);
+    background-attachment:fixed;
+  }
+  .wrap{ max-width:480px; margin:0 auto; padding:22px 16px 40px; }
+  @media (min-width:600px){ .wrap{ max-width:620px; } }
+  .brand{ text-align:center; margin-bottom:6px; }
+  .brand .word{ font-family:'Noto Serif TC','PingFang TC',serif; font-size:24px; letter-spacing:6px; color:var(--text); font-weight:600; }
+  .brand .word b{ color:var(--accent-strong); font-weight:700; }
+  .brand .rule{ width:52px; height:1px; background:var(--gold); opacity:.7; margin:10px auto 0; }
+  .sub{ font-size:13px; color:var(--text-muted); margin:14px 0 18px; text-align:center; }
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:14px 16px; margin-bottom:12px; box-shadow:0 2px 10px rgba(166,90,97,0.05); }
+  .b-date{ font-size:14px; font-weight:700; color:var(--accent-strong); }
+  .b-service{ font-size:15px; font-weight:700; margin-top:4px; }
+  .b-meta{ font-size:12.5px; color:var(--text-muted); margin-top:4px; line-height:1.6; }
+  .b-note{ font-size:12.5px; color:var(--text-muted); margin-top:6px; background:var(--surface-2); border-radius:8px; padding:6px 10px; }
+  .empty{ text-align:center; font-size:13.5px; color:var(--text-muted); padding:40px 0; }
+  .back-link{ display:block; text-align:center; margin-top:10px; font-size:13px; color:var(--text-muted); text-decoration:underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="word">妍序 <b>Skin</b></div>
+    <div class="rule"></div>
+  </div>
+  <p class="sub">我的預約</p>
+  <div id="list">載入中...</div>
+  <a class="back-link" href="./index.html">‹ 回到預約頁</a>
+</div>
+<script src="./bookings.js"></script>
+</body>
+</html>
