@@ -1,70 +1,43 @@
-// 測試用：以 PGlite 起一個完整的妍序 app（真的 schema、真的 migration、真的路由）。
-process.env.USE_PGLITE = '1';
-process.env.SESSION_SECRET = 'test-secret-test-secret-test-secret';
-process.env.LINE_CHANNEL_SECRET = 'test-line-secret';
-process.env.LINE_CHANNEL_ACCESS_TOKEN = 'test-line-token';
-delete process.env.DATABASE_URL;
-delete process.env.PGLITE_DIR;
+// 測試用：以 PGlite（PostgreSQL WASM）起一個真的 app，並提供帶登入 Cookie 的請求小工具。
+import { join } from 'node:path';
+import { createApp } from '../../src/app.js';
+import { createPgliteDb } from '../../src/db.js';
+import { migrate } from '../../src/migrate.js';
 
-const fs = require('fs');
-const path = require('path');
+export const PASSWORD = 'correct-horse-battery';
+export const SECRET = 'x'.repeat(40);
+export const MIGRATIONS = join(import.meta.dirname, '..', '..', 'migrations');
 
-const root = path.join(__dirname, '..', '..');
+// 固定「現在」為 2026-10-08 12:00（台北），讓合約到期天數可預測。
+export const FIXED_NOW = Date.parse('2026-10-08T04:00:00Z');
 
-function freshModules() {
-  // 每個測試檔各自一份全新的資料庫與 app：清掉 require 快取再載入。
-  for (const key of Object.keys(require.cache)) {
-    if (key.startsWith(path.join(root, 'src'))) delete require.cache[key];
-  }
-  return {
-    db: require(path.join(root, 'src', 'db')),
-    migrate: require(path.join(root, 'src', 'migrate')),
-    auth: require(path.join(root, 'src', 'authUtil')),
-    appModule: require(path.join(root, 'src', 'app')),
-  };
-}
-
-async function startApp() {
-  const { db, migrate, auth, appModule } = freshModules();
-  const { pool } = db;
-  // 與正式環境相同的順序：先有最早期的整包 schema，再套用編號 migration。
-  await pool.exec(fs.readFileSync(path.join(root, 'migrations', 'schema.sql'), 'utf8'));
-  await migrate.runMigrations(pool);
-
-  const password = 'test-password-123';
-  for (const [username, role] of [['boss', 'owner'], ['helper', 'staff']]) {
-    await pool.query(
-      `INSERT INTO admin_users (username, password_hash, role) VALUES ($1, $2, $3)
-       ON CONFLICT (username) DO UPDATE SET role = EXCLUDED.role, password_hash = EXCLUDED.password_hash`,
-      [username, auth.hashPassword(password), role],
-    );
-  }
-
-  const server = await new Promise((resolve) => { const s = appModule.createApp().listen(0, '127.0.0.1', () => resolve(s)); });
+export async function startApp(overrides = {}) {
+  const db = await createPgliteDb();
+  await migrate(db, MIGRATIONS);
+  const clock = { ms: FIXED_NOW };
+  const config = { adminPassword: PASSWORD, sessionSecret: SECRET, now: () => new Date(clock.ms), ...overrides };
+  const app = createApp({ db, config });
+  const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
+  let cookie = '';
 
-  const client = (cookie = '') => {
-    const state = { cookie };
-    const request = async (url, { method = 'GET', body } = {}) => {
-      const response = await fetch(`${base}${url}`, {
-        method,
-        headers: { ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...(state.cookie ? { cookie: state.cookie } : {}) },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-      const setCookies = response.headers.getSetCookie?.() ?? [];
-      if (setCookies.length) state.cookie = setCookies.map((c) => c.split(';')[0]).join('; ');
-      const text = await response.text();
-      let json = null;
-      try { json = JSON.parse(text); } catch { /* 不是 JSON */ }
-      return { status: response.status, json, text };
-    };
-    return { request, login: (username) => request('/api/admin/login', { method: 'POST', body: { username, password } }) };
+  const request = async (path, { method = 'GET', body, headers = {}, auth = true } = {}) => {
+    const response = await fetch(`${base}${path}`, {
+      method,
+      headers: { ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...(auth && cookie ? { cookie } : {}), ...headers },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await response.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch { /* 不是 JSON（例如靜態頁） */ }
+    return { status: response.status, headers: response.headers, json, text };
   };
-
-  const owner = client(); await owner.login('boss');
-  const staff = client(); await staff.login('helper');
-  const stop = async () => { await new Promise((resolve) => server.close(resolve)); await pool.end(); };
-  return { pool, base, client, owner: owner.request, staff: staff.request, anon: client().request, stop, services: { booking: require(path.join(root, 'src', 'services', 'bookingService')) } };
+  const login = async (password = PASSWORD) => {
+    const result = await request('/api/login', { method: 'POST', body: { password }, auth: false });
+    const setCookie = result.headers.get('set-cookie');
+    if (result.status === 200 && setCookie) cookie = setCookie.split(';')[0];
+    return result;
+  };
+  const stop = async () => { await new Promise((resolve) => server.close(resolve)); await db.close(); };
+  return { base, db, clock, request, login, setCookie: (value) => { cookie = value; }, getCookie: () => cookie, stop };
 }
-
-module.exports = { startApp };

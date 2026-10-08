@@ -1,27 +1,22 @@
 {
-  "name": "yanxu-skin-booking",
-  "version": "0.2.0",
-  "description": "妍序 Skin｜客製化皮膚管理 — LINE 官方帳號自動化預約系統（基礎版）",
-  "main": "src/server.js",
-  "type": "commonjs",
+  "name": "beauty-crm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "美業店家 CRM：統一登錄與管理禾域、妍序等多家店家的總覽後台",
+  "type": "module",
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "migrate": "node scripts/migrate.js",
-    "test": "node --test --test-timeout=60000 tests/*.test.js"
-  },
-  "dependencies": {
-    "@line/bot-sdk": "^9.4.2",
-    "cookie-session": "^2.1.0",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "google-auth-library": "^9.14.1",
-    "googleapis": "^144.0.0",
-    "node-cron": "^3.0.3",
-    "pg": "^8.12.0"
+    "seed": "node scripts/seed.js",
+    "test": "node --test tests/*.test.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8"
