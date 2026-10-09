@@ -4,7 +4,8 @@ const FIELD_LABEL = {
   name: '店名', system_type: '系統', url: '網址', status: '狀態', monthly_fee: '月費',
   contract_start: '合約起日', contract_end: '合約到期日', notes: '備註',
 };
-const ACTION_LABEL = { 'store.create': '新增', 'store.update': '修改', 'store.delete': '刪除' };
+const ACTION_LABEL = { 'store.create': '新增', 'store.update': '修改', 'store.delete': '刪除', 'store.remote_keys': '連線金鑰', 'store.modules': '功能模組' };
+const REMOTE_SYSTEMS = ['heyu', 'skin'];
 
 const money = (value) => `NT$${Number(value).toLocaleString('zh-TW')}`;
 const $ = (selector) => document.querySelector(selector);
@@ -100,7 +101,9 @@ function renderList() {
         progress !== null && h('div', { class: 'bar', 'aria-hidden': 'true' }, fill),
         h('p', { class: `contract-text is-${kind}` }, contractText(store))),
       h('div', { class: 'store-url' }, store.url ? h('a', { href: store.url, target: '_blank', rel: 'noopener noreferrer' }, store.url.replace(/^https?:\/\//, '')) : h('span', { class: 'muted' }, '未填網址')),
-      h('div', { class: 'store-actions' }, h('button', { type: 'button', class: 'btn quiet', onclick: () => openDialog(store) }, '編輯')),
+      h('div', { class: 'store-actions' },
+        REMOTE_SYSTEMS.includes(store.system_type) && h('button', { type: 'button', class: 'btn quiet', onclick: () => openRemote(store) }, '店家頁'),
+        h('button', { type: 'button', class: 'btn quiet', onclick: () => openDialog(store) }, '編輯')),
     ));
   }
 }
@@ -124,6 +127,13 @@ function renderAudit() {
     if (entry.action === 'store.update') {
       detail = Object.entries(entry.detail.changes ?? {}).map(([key, change]) =>
         key === 'notes' ? '備註已更新' : `${FIELD_LABEL[key] ?? key}：${formatValue(key, change.from)} → ${formatValue(key, change.to)}`).join('；');
+    }
+    if (entry.action === 'store.remote_keys') {
+      const verb = { set: '已設定', cleared: '已清除' };
+      detail = [['read', '讀取金鑰'], ['write', '寫入金鑰']].filter(([key]) => entry.detail?.[key]).map(([key, label]) => `${label}${verb[entry.detail[key]] ?? ''}`).join('；');
+    }
+    if (entry.action === 'store.modules') {
+      detail = Object.values(entry.detail?.changes ?? {}).map((change) => `${change.label}：${change.from ? '開' : '關'} → ${change.to ? '開' : '關'}`).join('；');
     }
     list.append(h('li', {}, h('time', {}, time), h('strong', {}, `${ACTION_LABEL[entry.action] ?? entry.action}　${entry.store_name}`), detail && h('span', { class: 'muted' }, detail)));
   }
@@ -204,6 +214,159 @@ $('#delete-btn').addEventListener('click', async () => {
   dialog.close();
   await load();
 });
+
+
+// ---------- 店家頁：本月預約數、功能模組、連線金鑰 ----------
+const remoteDialog = $('#remote-dialog');
+const remote = { store: null, month: '', overview: null, status: null, seq: 0 };
+const remoteUrl = (path = '') => `/api/stores/${remote.store.id}/remote${path}`;
+const showMessage = (selector, text) => { const node = $(selector); node.textContent = text ?? ''; node.hidden = !text; };
+const errorText = (result) => (result.data.fields ? Object.values(result.data.fields).join('、') : result.data.error) || '操作失敗，請稍後再試';
+
+async function openRemote(store) {
+  remote.store = store; remote.month = ''; remote.overview = null; remote.status = null; remote.seq += 1;
+  $('#remote-title').textContent = `店家頁：${store.name}`;
+  $('#remote-sub').textContent = SYSTEM_LABEL[store.system_type] ?? '';
+  for (const id of ['#remote-read-key', '#remote-write-key']) $(id).value = '';
+  for (const id of ['#remote-modules-error', '#remote-modules-ok', '#remote-keys-error']) showMessage(id, '');
+  $('#remote-stats').replaceChildren(h('p', { class: 'muted' }, '讀取中…'));
+  $('#remote-modules').replaceChildren();
+  $('#remote-modules-save').disabled = true;
+  remoteDialog.showModal();
+  await loadRemoteStatus();
+  await loadOverview();
+}
+
+async function loadRemoteStatus() {
+  const token = remote.seq;
+  const result = await api(remoteUrl());
+  if (token !== remote.seq) return;
+  remote.status = result.ok ? result.data : null;
+  renderKeys();
+}
+
+function renderKeys() {
+  const status = remote.status ?? {};
+  $('#remote-unavailable').hidden = status.available !== false;
+  for (const [kind, flag] of [['read', status.has_read_key], ['write', status.has_write_key]]) {
+    const node = $(`#remote-${kind}-state`);
+    node.textContent = flag ? '已設定' : '未設定';
+    node.classList.toggle('is-set', Boolean(flag));
+    $(`#remote-clear-${kind}`).hidden = !flag;
+  }
+}
+
+async function loadOverview() {
+  const token = remote.seq;
+  $('#remote-stats').replaceChildren(h('p', { class: 'muted' }, '讀取中…'));
+  const result = await api(remoteUrl(`/overview${remote.month ? `?month=${remote.month}` : ''}`));
+  if (token !== remote.seq) return;
+  if (!result.ok) {
+    remote.overview = null;
+    $('#remote-stats').replaceChildren(h('p', { class: 'field-error' }, result.data.error ?? '讀取失敗'));
+    $('#remote-modules').replaceChildren();
+    $('#remote-modules-save').disabled = true;
+    return;
+  }
+  remote.overview = result.data;
+  remote.month = result.data.month;
+  $('#remote-month').value = result.data.month;
+  renderStats();
+  renderModules();
+}
+
+function renderStats() {
+  const box = $('#remote-stats');
+  const { stats, month } = remote.overview;
+  if (!stats.ok) { box.replaceChildren(h('p', { class: 'field-error' }, stats.error)); return; }
+  const { total, cancelled } = stats.data.bookings;
+  box.replaceChildren(h('div', { class: 'remote-number' },
+    h('strong', {}, `${total} 筆`),
+    h('span', { class: 'muted' }, `${month} 預約數`),
+    h('span', { class: 'hint' }, `另有已取消 ${cancelled} 筆（不計入）`)));
+}
+
+function renderModules() {
+  const box = $('#remote-modules');
+  const { config, can_edit: canEdit } = remote.overview;
+  box.replaceChildren();
+  showMessage('#remote-modules-error', '');
+  showMessage('#remote-modules-ok', '');
+  if (!config.ok) {
+    box.append(h('p', { class: 'field-error' }, config.error));
+    $('#remote-modules-save').disabled = true;
+    return;
+  }
+  for (const [key, mod] of Object.entries(config.data.modules)) {
+    const input = h('input', { type: 'checkbox', 'data-module': key, disabled: !canEdit });
+    input.checked = mod.enabled;
+    box.append(h('label', { class: `module-row${canEdit ? '' : ' is-locked'}` }, input, h('span', {}, mod.label)));
+  }
+  if (!canEdit) box.append(h('p', { class: 'hint' }, '還沒設定寫入金鑰，目前只能查看。'));
+  $('#remote-modules-save').disabled = !canEdit;
+}
+
+$('#remote-modules-save').addEventListener('click', async () => {
+  if (!remote.overview?.config.ok) return;
+  const current = remote.overview.config.data.modules;
+  // 只送出有變動的模組，沒動到的維持店家系統上的狀態。
+  const modules = {};
+  for (const box of document.querySelectorAll('#remote-modules input[data-module]')) {
+    if (box.checked !== current[box.dataset.module].enabled) modules[box.dataset.module] = box.checked;
+  }
+  showMessage('#remote-modules-error', ''); showMessage('#remote-modules-ok', '');
+  if (!Object.keys(modules).length) { showMessage('#remote-modules-ok', '沒有變更'); return; }
+  const button = $('#remote-modules-save');
+  button.disabled = true;
+  const result = await api(remoteUrl('/modules'), { method: 'PUT', body: { modules } });
+  if (!result.ok) { showMessage('#remote-modules-error', errorText(result)); button.disabled = false; return; }
+  await loadOverview();
+  await refreshAudit();
+  showMessage('#remote-modules-ok', result.data.changed ? '已儲存，店家系統已套用' : '沒有變更');
+});
+
+$('#remote-keys-save').addEventListener('click', async () => {
+  const body = {};
+  const read = $('#remote-read-key').value.trim(), write = $('#remote-write-key').value.trim();
+  if (read) body.read_key = read;
+  if (write) body.write_key = write;
+  showMessage('#remote-keys-error', '');
+  if (!Object.keys(body).length) { showMessage('#remote-keys-error', '請輸入要儲存的金鑰'); return; }
+  const result = await api(remoteUrl(), { method: 'PUT', body });
+  if (!result.ok) { showMessage('#remote-keys-error', errorText(result)); return; }
+  $('#remote-read-key').value = ''; $('#remote-write-key').value = '';
+  await loadRemoteStatus();
+  await loadOverview();
+  await refreshAudit();
+});
+
+for (const kind of ['read', 'write']) {
+  $(`#remote-clear-${kind}`).addEventListener('click', async () => {
+    const label = kind === 'read' ? '讀取' : '寫入';
+    if (!confirm(`確定清除「${remote.store.name}」的${label}金鑰？清除後需要重新輸入才能連線。`)) return;
+    showMessage('#remote-keys-error', '');
+    const result = await api(remoteUrl(), { method: 'PUT', body: { [`${kind}_key`]: null } });
+    if (!result.ok) { showMessage('#remote-keys-error', errorText(result)); return; }
+    await loadRemoteStatus();
+    await loadOverview();
+    await refreshAudit();
+  });
+}
+
+$('#remote-month').addEventListener('change', (event) => {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)) return;
+  remote.month = event.target.value;
+  loadOverview();
+});
+$('#remote-close').addEventListener('click', () => { remote.seq += 1; remoteDialog.close(); });
+remoteDialog.addEventListener('click', (event) => { if (event.target === remoteDialog) { remote.seq += 1; remoteDialog.close(); } });
+remoteDialog.addEventListener('close', () => { remote.seq += 1; });
+
+async function refreshAudit() {
+  const audit = await api('/api/audit?limit=30');
+  state.audit = audit.data.entries ?? [];
+  renderAudit();
+}
 
 $('#add-btn').addEventListener('click', () => openDialog(null));
 $('#logout-btn').addEventListener('click', async () => { await api('/api/logout', { method: 'POST' }).catch(() => {}); location.href = '/login.html'; });

@@ -20,10 +20,16 @@
 - 交付：zip，先在乾淨 clone 驗證可套用、測試全過，檔名唯一。
 
 ## 規劃中（依序）
-1. 每家店系統提供受保護的管理介面：唯讀 `stats`（本月預約數、進帳）與可寫 `config`（模組開關、店名、主題色、logo）。讀、寫用不同金鑰，每家店各一組。
-2. CRM 加入跨店總覽（呼叫各店 `stats`）與遠端模組開關，改動要寫入異動紀錄。
+1. （已完成）每家店系統提供 `/api/remote/stats`（本月預約數）、`/api/remote/config`（讀）與 `PUT /api/remote/config`（改功能模組）。讀、寫用不同金鑰（`REMOTE_READ_KEY`、`REMOTE_WRITE_KEY`），每家店各一組；店家自己的後台改不了模組。尚未做：進帳數字、店名／主題色／logo 的遠端設定。
+2. （部分完成）CRM「店家頁」可看單店本月預約數、遠端開關模組，改動寫入異動紀錄。尚未做：跨店總覽（一次呼叫所有店的 stats）。
 3. 妍序整理：清掉根目錄舊檔、補測試、加店家設定表。
 4. 資料層換 PostgreSQL、統一核心：等第三家店、單店成本吃掉月費或客人要跨店時再做。
+
+## 遠端管理
+- 店家端（禾域 `lib/remote-access.mjs`＋`server.mjs`、妍序 `src/remoteApi.js`）：Bearer 金鑰驗證，timing-safe 比對，連續失敗封鎖；金鑰未設定或少於 32 字元時整組介面回 404。
+- CRM：`store_remote` 表以 AES-256-GCM 加密存金鑰（密鑰 `REMOTE_KEY_SECRET`，不可更換）；`src/remote.js` 只往店家網址的 origin 送、不跟隨轉址、https 限定（本機測試除外）。
+- 兩家店回應格式一致：`stats` 為 `{ system, month, bookings: { total, cancelled } }`；`config` 為 `{ system, modules: { key: { label, enabled } } }`。新增模組只要店家端加定義，CRM 自動顯示。
+- 預約數定義：total 為未取消（禾域含待確認、爽約；妍序含已確認、已完成），cancelled 為已取消（禾域含已婉拒）。
 
 ## 已知限制
 - 目前不連動各店系統，數字都是手動登錄。

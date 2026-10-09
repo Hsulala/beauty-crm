@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { COOKIE_NAME, SESSION_MS, createLoginLimiter, issueSession, passwordMatches, readCookie, verifySession } from './auth.js';
 import { contractInfo, taipeiToday } from './contract.js';
 import { FIELD_NAMES, checkContractOrder, parseStore } from './validate.js';
+import { RemoteError, callStore } from './remote.js';
+import { open, seal } from './secretbox.js';
 
 const STORE_COLUMNS = `id, name, system_type, url, status, monthly_fee,
   to_char(contract_start, 'YYYY-MM-DD') AS contract_start,
@@ -167,6 +169,128 @@ export function createApp({ db, config }) {
     response.json({ ok: true });
   });
 
+  // ---- 遠端管理（呼叫各店系統的 /api/remote/*）----
+  // 各店有兩把金鑰：讀取金鑰看數字與模組狀態、寫入金鑰才能改模組。金鑰加密存放，不會回傳到畫面。
+  // 功能模組只能在這裡改，店家自己的後台改不了。
+  const REMOTE_SYSTEMS = ['heyu', 'skin'];
+  const validKey = (value) => typeof value === 'string' && value.length >= 32 && value.length <= 200 && !/\s/.test(value);
+  const secret = config.remoteKeySecret ?? '';
+
+  async function remoteContext(request, response) {
+    const id = parseId(request.params.id);
+    const store = id === null ? null : (await db.query(`SELECT ${STORE_COLUMNS} FROM stores WHERE id = $1`, [id])).rows[0];
+    if (!store) { fail(response, 404, '找不到這家店'); return null; }
+    const row = (await db.query('SELECT read_key_enc, write_key_enc FROM store_remote WHERE store_id = $1', [id])).rows[0] ?? {};
+    const keys = secret
+      ? { read: row.read_key_enc ? open(row.read_key_enc, secret) : null, write: row.write_key_enc ? open(row.write_key_enc, secret) : null }
+      : { read: null, write: null };
+    return { store, row, keys };
+  }
+
+  function requireRemote(response, { store }) {
+    if (!secret) { fail(response, 409, '尚未設定 REMOTE_KEY_SECRET，無法使用遠端管理（請在 Railway 設定這個變數）'); return false; }
+    if (!REMOTE_SYSTEMS.includes(store.system_type)) { fail(response, 400, '這個系統類型不支援遠端管理'); return false; }
+    return true;
+  }
+
+  const settle = (result) => (result.status === 'fulfilled'
+    ? { ok: true, data: result.value }
+    : { ok: false, error: result.reason instanceof RemoteError ? result.reason.message : '讀取失敗' });
+
+  app.get('/api/stores/:id/remote', async (request, response) => {
+    const ctx = await remoteContext(request, response);
+    if (!ctx) return;
+    response.json({
+      available: Boolean(secret),
+      supported: REMOTE_SYSTEMS.includes(ctx.store.system_type),
+      has_read_key: Boolean(ctx.row.read_key_enc),
+      has_write_key: Boolean(ctx.row.write_key_enc),
+    });
+  });
+
+  // 設定或清除金鑰：只處理有帶的那把；帶 null 代表清除。金鑰本身不會寫進異動紀錄。
+  app.put('/api/stores/:id/remote', async (request, response) => {
+    const ctx = await remoteContext(request, response);
+    if (!ctx) return;
+    if (!secret) return fail(response, 409, '尚未設定 REMOTE_KEY_SECRET，無法儲存金鑰（請在 Railway 設定這個變數）');
+    const body = request.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return fail(response, 400, '資料格式不正確');
+    const fields = {};
+    const wanted = { read_key: 'read_key_enc', write_key: 'write_key_enc' };
+    for (const key of Object.keys(body)) if (!wanted[key]) fields[key] = '沒有這個欄位';
+    for (const key of Object.keys(wanted)) {
+      if (!Object.hasOwn(body, key)) continue;
+      if (body[key] !== null && !validKey(body[key])) fields[key] = '金鑰需為 32 到 200 個字元，且不含空白';
+    }
+    if (!Object.hasOwn(body, 'read_key') && !Object.hasOwn(body, 'write_key') && !Object.keys(fields).length) return fail(response, 400, '沒有要儲存的金鑰');
+    const nextRead = Object.hasOwn(body, 'read_key') ? body.read_key : ctx.keys.read;
+    const nextWrite = Object.hasOwn(body, 'write_key') ? body.write_key : ctx.keys.write;
+    if (!Object.keys(fields).length && nextRead && nextWrite && nextRead === nextWrite) fields.write_key = '讀取與寫入金鑰必須不同';
+    if (Object.keys(fields).length) return fail(response, 400, '金鑰有誤', fields);
+
+    const result = await db.tx(async (tx) => {
+      const current = (await tx.query('SELECT read_key_enc, write_key_enc FROM store_remote WHERE store_id = $1 FOR UPDATE', [ctx.store.id])).rows[0] ?? {};
+      const next = { read_key_enc: current.read_key_enc ?? null, write_key_enc: current.write_key_enc ?? null };
+      const detail = {};
+      for (const [key, column] of Object.entries(wanted)) {
+        if (!Object.hasOwn(body, key)) continue;
+        next[column] = body[key] === null ? null : seal(body[key], secret);
+        detail[key === 'read_key' ? 'read' : 'write'] = body[key] === null ? 'cleared' : 'set';
+      }
+      await tx.query(
+        `INSERT INTO store_remote (store_id, read_key_enc, write_key_enc) VALUES ($1, $2, $3)
+         ON CONFLICT (store_id) DO UPDATE SET read_key_enc = EXCLUDED.read_key_enc, write_key_enc = EXCLUDED.write_key_enc, updated_at = now()`,
+        [ctx.store.id, next.read_key_enc, next.write_key_enc],
+      );
+      await tx.query(
+        'INSERT INTO audit_log (action, store_id, store_name, detail) VALUES ($1, $2, $3, $4::jsonb)',
+        ['store.remote_keys', ctx.store.id, ctx.store.name, JSON.stringify(detail)],
+      );
+      return { has_read_key: Boolean(next.read_key_enc), has_write_key: Boolean(next.write_key_enc) };
+    });
+    response.json(result);
+  });
+
+  // 店家頁資料：本月預約數＋功能模組狀態。兩段各自成功或失敗，一段連不上不影響另一段。
+  app.get('/api/stores/:id/remote/overview', async (request, response) => {
+    const ctx = await remoteContext(request, response);
+    if (!ctx || !requireRemote(response, ctx)) return;
+    const key = ctx.keys.read ?? ctx.keys.write;
+    if (!key) return fail(response, 409, '還沒設定連線金鑰，請先在下方儲存這家店的金鑰');
+    const month = request.query.month === undefined ? taipeiToday(now()).slice(0, 7) : String(request.query.month);
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return fail(response, 400, '月份格式不正確');
+    const [stats, remoteConfig] = await Promise.allSettled([
+      callStore({ url: ctx.store.url, key, path: `/api/remote/stats?month=${month}` }),
+      callStore({ url: ctx.store.url, key, path: '/api/remote/config' }),
+    ]);
+    response.json({ month, can_edit: Boolean(ctx.keys.write), stats: settle(stats), config: settle(remoteConfig) });
+  });
+
+  // 開關功能模組：需要寫入金鑰。只送有變動的模組；實際有變動才留異動紀錄。
+  app.put('/api/stores/:id/remote/modules', async (request, response) => {
+    const ctx = await remoteContext(request, response);
+    if (!ctx || !requireRemote(response, ctx)) return;
+    if (!ctx.keys.write) return fail(response, 409, '還沒設定寫入金鑰，無法修改功能模組');
+    const modules = request.body?.modules;
+    if (!modules || typeof modules !== 'object' || Array.isArray(modules)) return fail(response, 400, '模組設定格式不正確');
+    const entries = Object.entries(modules);
+    if (!entries.length || entries.length > 50 || entries.some(([, value]) => typeof value !== 'boolean')) return fail(response, 400, '模組設定格式不正確');
+    const before = await callStore({ url: ctx.store.url, key: ctx.keys.write, path: '/api/remote/config' });
+    const after = await callStore({ url: ctx.store.url, key: ctx.keys.write, path: '/api/remote/config', method: 'PUT', body: { modules } });
+    const changes = {};
+    for (const [name, state] of Object.entries(after.modules ?? {})) {
+      const was = before.modules?.[name]?.enabled;
+      if (was !== undefined && was !== state.enabled) changes[name] = { label: state.label, from: was, to: state.enabled };
+    }
+    if (Object.keys(changes).length) {
+      await db.query(
+        'INSERT INTO audit_log (action, store_id, store_name, detail) VALUES ($1, $2, $3, $4::jsonb)',
+        ['store.modules', ctx.store.id, ctx.store.name, JSON.stringify({ changes })],
+      );
+    }
+    response.json({ ok: true, changed: Object.keys(changes).length > 0, modules: after.modules });
+  });
+
   // ---- 總覽數字 ----
   app.get('/api/summary', async (request, response) => {
     const { rows } = await db.query(`SELECT ${STORE_COLUMNS} FROM stores`);
@@ -205,6 +329,7 @@ export function createApp({ db, config }) {
   app.use((error, request, response, next) => {
     if (error?.type === 'entity.parse.failed') return fail(response, 400, 'JSON 格式不正確');
     if (error?.type === 'entity.too.large') return fail(response, 413, '資料太大');
+    if (error instanceof RemoteError) return fail(response, error.status, error.message);
     console.error(error);
     return fail(response, 500, '伺服器發生錯誤');
   });

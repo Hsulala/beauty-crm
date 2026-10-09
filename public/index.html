@@ -109,6 +109,58 @@
     </form>
   </dialog>
 
+  <dialog id="remote-dialog" aria-labelledby="remote-title">
+    <div class="remote">
+      <h2 id="remote-title">店家頁</h2>
+      <p class="muted" id="remote-sub"></p>
+
+      <section class="remote-section" aria-labelledby="remote-stats-title">
+        <div class="remote-head">
+          <h3 id="remote-stats-title">預約數</h3>
+          <input id="remote-month" type="month" aria-label="選擇月份">
+        </div>
+        <div id="remote-stats" aria-live="polite"></div>
+      </section>
+
+      <section class="remote-section" aria-labelledby="remote-modules-title">
+        <h3 id="remote-modules-title">功能模組</h3>
+        <p class="hint">模組只能在這裡開關，店家自己的後台無法調整。關閉的功能資料仍會保留，重新開啟即可恢復。</p>
+        <div id="remote-modules" class="module-list"></div>
+        <p class="field-error" id="remote-modules-error" role="alert" hidden></p>
+        <p class="ok-note" id="remote-modules-ok" role="status" hidden></p>
+        <div class="section-actions">
+          <button type="button" id="remote-modules-save" class="btn primary" disabled>儲存模組設定</button>
+        </div>
+      </section>
+
+      <section class="remote-section" aria-labelledby="remote-keys-title">
+        <h3 id="remote-keys-title">連線金鑰</h3>
+        <p class="hint">金鑰要和店家系統（Railway 變數 REMOTE_READ_KEY、REMOTE_WRITE_KEY）一致。儲存後不會再顯示，只能重新輸入或清除。</p>
+        <p class="field-error" id="remote-unavailable" hidden>CRM 尚未設定 REMOTE_KEY_SECRET，無法儲存金鑰。請先到 Railway 設定這個變數。</p>
+        <div class="field">
+          <label for="remote-read-key">讀取金鑰（看預約數與模組狀態）<span class="key-state" id="remote-read-state"></span></label>
+          <input id="remote-read-key" type="password" autocomplete="off" maxlength="200" placeholder="要更換時才輸入">
+        </div>
+        <div class="field">
+          <label for="remote-write-key">寫入金鑰（開關模組）<span class="key-state" id="remote-write-state"></span></label>
+          <input id="remote-write-key" type="password" autocomplete="off" maxlength="200" placeholder="要更換時才輸入">
+        </div>
+        <p class="field-error" id="remote-keys-error" role="alert" hidden></p>
+        <div class="section-actions">
+          <button type="button" id="remote-clear-read" class="btn danger" hidden>清除讀取金鑰</button>
+          <button type="button" id="remote-clear-write" class="btn danger" hidden>清除寫入金鑰</button>
+          <span class="spacer"></span>
+          <button type="button" id="remote-keys-save" class="btn primary">儲存金鑰</button>
+        </div>
+      </section>
+
+      <div class="dialog-actions">
+        <span class="spacer"></span>
+        <button type="button" id="remote-close" class="btn quiet">關閉</button>
+      </div>
+    </div>
+  </dialog>
+
   <script type="module" src="/app.js"></script>
 </body>
 </html>

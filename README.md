@@ -23,12 +23,33 @@
    | `DATABASE_URL` | 從 PostgreSQL 服務引用（Railway 的 Variable Reference），不要手打 |
    | `ADMIN_PASSWORD` | 登入密碼，至少 12 個字元 |
    | `SESSION_SECRET` | 簽署登入工作階段，至少 32 個字元，可用 `openssl rand -hex 32` 產生 |
+   | `REMOTE_KEY_SECRET` | （要用店家頁的遠端管理才需要）加密存放各店金鑰，至少 32 個字元。設定後不要更換，否則已存的各店金鑰會解不開 |
 
 4. 部署完成後，資料表會在啟動時自動建立（migration 自動套用，不用手動執行）。
 5. 第一次使用可帶入既有兩家店：在 Railway 服務的 Shell 執行 `npm run seed`。
    只會新增不存在的店名，已存在的不會被覆蓋。也可以跳過，直接在畫面上按「新增店家」。
 
 健康檢查路徑是 `/healthz`。更換 `ADMIN_PASSWORD` 或 `SESSION_SECRET` 後，既有登入會全部失效。
+
+## 店家頁（遠端管理）
+
+在店家清單按「店家頁」（目前支援禾域、妍序），可以看該店本月預約數、開關功能模組。**功能模組只能在這裡開關，店家自己的後台（含店主帳號）無法調整。**
+
+每家店有兩把金鑰，各店各自獨立：
+
+| 金鑰 | 能做什麼 | 店家系統的環境變數 |
+| --- | --- | --- |
+| 讀取金鑰 | 看本月預約數、模組狀態 | `REMOTE_READ_KEY` |
+| 寫入金鑰 | 開關功能模組（也能讀） | `REMOTE_WRITE_KEY` |
+
+設定步驟（每家店一次）：
+
+1. 產生兩把不同的金鑰：`openssl rand -hex 32` 執行兩次。
+2. 在店家系統的 Railway 服務 Variables 設定 `REMOTE_READ_KEY`、`REMOTE_WRITE_KEY`（至少 32 字元；沒設定時店家系統的遠端介面是關閉的）。
+3. 在 CRM 打開該店的「店家頁」，把同樣兩把金鑰貼到「連線金鑰」並儲存。金鑰在 CRM 以加密方式存放，儲存後不會再顯示。
+4. 店家網址必須是 `https://`，且是最終網址（不跟隨轉址）。
+
+開關模組、設定或清除金鑰都會寫入異動紀錄（不含金鑰本身）。
 
 ## 本機開發
 
@@ -56,6 +77,8 @@ src/contract.js   合約到期判斷（台北日期）
 src/validate.js   欄位驗證
 src/auth.js       登入工作階段、登入失敗限制
 src/seed.js       預先登錄既有店家（不覆蓋）
+src/remote.js     呼叫各店系統的遠端介面（不跟隨轉址、逾時、錯誤訊息）
+src/secretbox.js  各店金鑰的加密與解密（AES-256-GCM）
 migrations/       資料庫結構，新增欄位請加新檔，不要改舊檔
 public/           前端頁面（登入頁、總覽頁）
 tests/            自動測試（npm test）
