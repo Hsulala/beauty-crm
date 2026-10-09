@@ -66,7 +66,8 @@ test('健康檢查與靜態頁面', async () => {
 test('頁面守門：沒有行內程式、沒有表情符號，且 HTML 用到的元素 id 都有對應', () => {
   const dir = join(import.meta.dirname, '..', 'public');
   const emoji = /\p{Extended_Pictographic}/u;
-  for (const file of readdirSync(dir)) {
+  // 只檢查文字檔（字型、圖片等二進位檔與子資料夾略過）
+  for (const file of readdirSync(dir).filter((f) => /\.(html|js|css)$/.test(f))) {
     const text = readFileSync(join(dir, file), 'utf8');
     assert.equal(emoji.test(text), false, `${file} 不應含表情符號`);
     if (file.endsWith('.html')) {
