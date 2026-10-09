@@ -6,6 +6,10 @@ export function loadConfig(env = process.env) {
   if (adminPassword.length < 12) problems.push('ADMIN_PASSWORD 至少需要 12 個字元');
   if (sessionSecret.length < 32) problems.push('SESSION_SECRET 至少需要 32 個字元（可用 openssl rand -hex 32 產生）');
 
+  // 遠端管理金鑰的加密用密鑰：沒設定就不能儲存各店金鑰（遠端管理功能停用），設了就必須夠長。
+  const remoteKeySecret = env.REMOTE_KEY_SECRET ?? '';
+  if (remoteKeySecret && remoteKeySecret.length < 32) problems.push('REMOTE_KEY_SECRET 至少需要 32 個字元（可用 openssl rand -hex 32 產生）');
+
   const databaseUrl = env.DATABASE_URL ?? '';
   const usePglite = env.USE_PGLITE === '1';
   if (!databaseUrl && !usePglite) problems.push('缺少 DATABASE_URL（本機試用可改設 USE_PGLITE=1）');
@@ -15,5 +19,5 @@ export function loadConfig(env = process.env) {
     error.problems = problems;
     throw error;
   }
-  return { adminPassword, sessionSecret, databaseUrl, usePglite, port: Number(env.PORT || 3000) };
+  return { adminPassword, sessionSecret, remoteKeySecret, databaseUrl, usePglite, port: Number(env.PORT || 3000) };
 }
