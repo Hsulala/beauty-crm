@@ -297,13 +297,16 @@ function renderModules() {
     $('#remote-modules-save').disabled = true;
     return;
   }
-  // 依分類分組：共用功能、臉部專屬、身體專屬。沒帶分類的（舊版店家系統）放在「功能」一組。
-  const GROUPS = [['common', '共用功能'], ['skin', '臉部專屬'], ['body', '身體專屬']];
+  // 依分類分組：共用功能、臉部專屬、多位老師才需要、包堂。沒帶分類的放在「其他功能」一組。
+  // 舊版禾域系統（還沒更新的）把老師排班、分潤、包堂、老師通知都標成 body，這裡依模組代碼換成新分類。
+  const GROUPS = [['common', '共用功能'], ['skin', '臉部專屬'], ['multi', '多位老師才需要'], ['package', '包堂']];
+  const LEGACY_BODY = { schedule: 'multi', commission: 'multi', packages: 'package', teacherNotify: 'common' };
+  const scopeOf = (key, mod) => (mod.scope === 'body' ? LEGACY_BODY[key] : mod.scope);
   const entries = Object.entries(config.data.modules);
   const known = GROUPS.map(([scope]) => scope);
   const buckets = [...GROUPS, ['other', '其他功能']];
   for (const [scope, title] of buckets) {
-    const items = entries.filter(([, mod]) => (scope === 'other' ? !known.includes(mod.scope) : mod.scope === scope));
+    const items = entries.filter(([key, mod]) => (scope === 'other' ? !known.includes(scopeOf(key, mod)) : scopeOf(key, mod) === scope));
     if (!items.length) continue;
     box.append(h('h4', { class: 'module-group' }, title));
     for (const [key, mod] of items) {
