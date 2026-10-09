@@ -4,7 +4,7 @@ const FIELD_LABEL = {
   name: '店名', system_type: '系統', url: '網址', status: '狀態', monthly_fee: '月費',
   contract_start: '合約起日', contract_end: '合約到期日', notes: '備註',
 };
-const ACTION_LABEL = { 'store.create': '新增', 'store.update': '修改', 'store.delete': '刪除', 'store.remote_keys': '連線金鑰', 'store.modules': '功能模組' };
+const ACTION_LABEL = { 'store.icon': '小圖示', 'store.create': '新增', 'store.update': '修改', 'store.delete': '刪除', 'store.remote_keys': '連線金鑰', 'store.modules': '功能模組' };
 const REMOTE_SYSTEMS = ['heyu', 'skin', 'order'];
 
 const money = (value) => `NT$${Number(value).toLocaleString('zh-TW')}`;
@@ -90,9 +90,11 @@ function renderList() {
     if (progress !== null) fill.style.width = `${Math.round(progress * 100)}%`;
     box.append(h('article', { class: `store status-${store.status}` },
       h('div', { class: 'store-main' },
-        h('h2', {}, store.name),
-        h('p', { class: 'muted' }, SYSTEM_LABEL[store.system_type] ?? store.system_type),
-        store.notes && h('p', { class: 'notes' }, store.notes)),
+        iconNode(store),
+        h('div', { class: 'store-text' },
+          h('h2', {}, store.name),
+          h('p', { class: 'muted' }, SYSTEM_LABEL[store.system_type] ?? store.system_type),
+          store.notes && h('p', { class: 'notes' }, store.notes))),
       h('div', { class: 'store-status' }, h('span', { class: `badge is-${store.status}` }, STATUS_LABEL[store.status])),
       h('div', { class: 'store-fee' },
         h('span', { class: 'fee' }, store.monthly_fee ? `${money(store.monthly_fee)} /月` : '未設定月費'),
@@ -166,6 +168,69 @@ function showErrors(fields = {}, general = '') {
   box.hidden = !box.textContent;
 }
 
+// 店家小圖示：有上傳就顯示圖片，沒有就用店名第一個字
+function iconNode(store, large = false) {
+  const cls = `store-icon${large ? ' is-lg' : ''}`;
+  if (store?.icon_v) return h('span', { class: cls }, h('img', { src: `/api/stores/${store.id}/icon?v=${store.icon_v}`, alt: '' }));
+  return h('span', { class: `${cls} is-empty`, 'aria-hidden': 'true' }, (store?.name ?? '').trim().slice(0, 1) || '店');
+}
+function renderIconField() {
+  $('#icon-field').hidden = !editing;
+  if (!editing) return;
+  $('#icon-preview').replaceWith(Object.assign(iconNode(editing, true), { id: 'icon-preview' }));
+  $('#icon-remove-btn').disabled = !editing.icon_v;
+  $('#icon-fetch-btn').disabled = !editing.url;
+  showMessage('#icon-error', '');
+}
+async function afterIconChange() {
+  await load();
+  editing = state.stores.find((s) => s.id === editing.id) ?? editing;
+  renderIconField();
+}
+function toSquarePng(file, size = 128) {
+  // 用 data: 讀圖（頁面的 CSP 只允許 self 與 data: 圖片）
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('讀不到這張圖片'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = size;
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        canvas.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
+        canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('圖片轉換失敗'))), 'image/png');
+      };
+      img.onerror = () => reject(new Error('讀不到這張圖片'));
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+$('#icon-upload-btn').addEventListener('click', () => $('#icon-file').click());
+$('#icon-file').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0]; event.target.value = '';
+  if (!file || !editing) return;
+  try {
+    const blob = await toSquarePng(file);
+    const response = await fetch(`/api/stores/${editing.id}/icon`, { method: 'PUT', headers: { 'content-type': 'image/png' }, body: blob });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || '上傳失敗');
+    await afterIconChange();
+  } catch (error) { showMessage('#icon-error', error.message); }
+});
+$('#icon-fetch-btn').addEventListener('click', async () => {
+  if (!editing) return;
+  const result = await api(`/api/stores/${editing.id}/icon/fetch`, { method: 'POST' });
+  if (!result.ok) { showMessage('#icon-error', errorText(result)); return; }
+  await afterIconChange();
+});
+$('#icon-remove-btn').addEventListener('click', async () => {
+  if (!editing || !confirm('移除這家店的小圖示？')) return;
+  const result = await api(`/api/stores/${editing.id}/icon`, { method: 'DELETE' });
+  if (!result.ok) { showMessage('#icon-error', errorText(result)); return; }
+  await afterIconChange();
+});
+
 function openDialog(store) {
   editing = store ?? null;
   $('#dialog-title').textContent = store ? `編輯：${store.name}` : '新增店家';
@@ -173,6 +238,7 @@ function openDialog(store) {
   const values = store ?? { name: '', system_type: 'other', status: 'building', monthly_fee: 0, url: '', contract_start: '', contract_end: '', notes: '' };
   for (const key of Object.keys(FIELD_LABEL)) form.elements[key].value = values[key] ?? '';
   showErrors();
+  renderIconField();
   dialog.showModal();
   form.elements.name.focus();
 }

@@ -44,6 +44,21 @@
     <form id="store-form" novalidate>
       <h2 id="dialog-title">新增店家</h2>
 
+      <div class="field" id="icon-field" hidden>
+        <span class="field-label">小圖示</span>
+        <div class="icon-edit">
+          <span id="icon-preview" class="store-icon is-lg"></span>
+          <div class="section-actions">
+            <button type="button" id="icon-upload-btn" class="btn quiet">上傳圖片</button>
+            <button type="button" id="icon-fetch-btn" class="btn quiet">從店家網站抓取</button>
+            <button type="button" id="icon-remove-btn" class="btn quiet">移除</button>
+          </div>
+        </div>
+        <input type="file" id="icon-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+        <p class="hint">建議用正方形圖片，會自動縮成 128×128。圖示會立即儲存，不需按下方的儲存。</p>
+        <p class="field-error" id="icon-error" hidden></p>
+      </div>
+
       <div class="field">
         <label for="f-name">店名</label>
         <input id="f-name" name="name" type="text" maxlength="60" required>
