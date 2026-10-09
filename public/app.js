@@ -297,10 +297,20 @@ function renderModules() {
     $('#remote-modules-save').disabled = true;
     return;
   }
-  for (const [key, mod] of Object.entries(config.data.modules)) {
-    const input = h('input', { type: 'checkbox', 'data-module': key, disabled: !canEdit });
-    input.checked = mod.enabled;
-    box.append(h('label', { class: `module-row${canEdit ? '' : ' is-locked'}` }, input, h('span', {}, mod.label)));
+  // 依分類分組：共用功能、臉部專屬、身體專屬。沒帶分類的（舊版店家系統）放在「功能」一組。
+  const GROUPS = [['common', '共用功能'], ['skin', '臉部專屬'], ['body', '身體專屬']];
+  const entries = Object.entries(config.data.modules);
+  const known = GROUPS.map(([scope]) => scope);
+  const buckets = [...GROUPS, ['other', '其他功能']];
+  for (const [scope, title] of buckets) {
+    const items = entries.filter(([, mod]) => (scope === 'other' ? !known.includes(mod.scope) : mod.scope === scope));
+    if (!items.length) continue;
+    box.append(h('h4', { class: 'module-group' }, title));
+    for (const [key, mod] of items) {
+      const input = h('input', { type: 'checkbox', 'data-module': key, disabled: !canEdit });
+      input.checked = mod.enabled;
+      box.append(h('label', { class: `module-row${canEdit ? '' : ' is-locked'}` }, input, h('span', {}, mod.label)));
+    }
   }
   if (!canEdit) box.append(h('p', { class: 'hint' }, '還沒設定寫入金鑰，目前只能查看。'));
   $('#remote-modules-save').disabled = !canEdit;
