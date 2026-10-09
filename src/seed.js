@@ -16,6 +16,14 @@ export const SEED_STORES = [
     monthly_fee: 1000,
     notes: '皮膚管理。Railway 專案 crm-system，GitHub Hsulala/skin-crm（私有），目前以 zip 上傳部署。',
   },
+  {
+    name: '戀鳳爪',
+    system_type: 'order',
+    url: 'https://lianfengzhua-app-production.up.railway.app',
+    status: 'building',
+    monthly_fee: 3000,
+    notes: '訂購型（B2B＋B2C）LINE 機器人與後台。GitHub Hsulala/lianfengzhua-line-bot，推到 main 自動部署。建置費 3 萬、月費 3,000（含流量費與每月 4 小時支援）。',
+  },
 ];
 
 export async function seedStores(db, stores = SEED_STORES) {

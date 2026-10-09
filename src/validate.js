@@ -1,5 +1,5 @@
 export const STATUSES = ['building', 'running', 'paused', 'ended'];
-export const SYSTEM_TYPES = ['heyu', 'skin', 'other'];
+export const SYSTEM_TYPES = ['heyu', 'skin', 'order', 'other'];
 
 const isDate = (value) => typeof value === 'string'
   && /^\d{4}-\d{2}-\d{2}$/.test(value)

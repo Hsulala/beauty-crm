@@ -1,11 +1,11 @@
 const STATUS_LABEL = { building: '建置中', running: '運作中', paused: '暫停', ended: '已結束' };
-const SYSTEM_LABEL = { heyu: '禾域 HEYU（按摩）', skin: '妍序 Skin（皮膚管理）', other: '其他系統' };
+const SYSTEM_LABEL = { heyu: '禾域 HEYU（按摩）', skin: '妍序 Skin（皮膚管理）', order: '訂購型（戀鳳爪、麻辣醬等）', other: '其他系統' };
 const FIELD_LABEL = {
   name: '店名', system_type: '系統', url: '網址', status: '狀態', monthly_fee: '月費',
   contract_start: '合約起日', contract_end: '合約到期日', notes: '備註',
 };
 const ACTION_LABEL = { 'store.create': '新增', 'store.update': '修改', 'store.delete': '刪除', 'store.remote_keys': '連線金鑰', 'store.modules': '功能模組' };
-const REMOTE_SYSTEMS = ['heyu', 'skin'];
+const REMOTE_SYSTEMS = ['heyu', 'skin', 'order'];
 
 const money = (value) => `NT$${Number(value).toLocaleString('zh-TW')}`;
 const $ = (selector) => document.querySelector(selector);
@@ -280,9 +280,11 @@ function renderStats() {
   const { stats, month } = remote.overview;
   if (!stats.ok) { box.replaceChildren(h('p', { class: 'field-error' }, stats.error)); return; }
   const { total, cancelled } = stats.data.bookings;
+  const isOrder = stats.data.system === 'order' && stats.data.orders;
   box.replaceChildren(h('div', { class: 'remote-number' },
     h('strong', {}, `${total} 筆`),
-    h('span', { class: 'muted' }, `${month} 預約數`),
+    h('span', { class: 'muted' }, `${month} ${isOrder ? '訂單數' : '預約數'}`),
+    isOrder && h('span', { class: 'muted' }, `　訂單金額 $${Number(stats.data.orders.amount).toLocaleString('en-US')}`),
     h('span', { class: 'hint' }, `另有已取消 ${cancelled} 筆（不計入）`)));
 }
 
@@ -299,7 +301,7 @@ function renderModules() {
   }
   // 依分類分組：共用功能、臉部專屬、多位老師才需要、包堂。沒帶分類的放在「其他功能」一組。
   // 舊版禾域系統（還沒更新的）把老師排班、分潤、包堂、老師通知都標成 body，這裡依模組代碼換成新分類。
-  const GROUPS = [['common', '共用功能'], ['skin', '臉部專屬'], ['multi', '多位老師才需要'], ['package', '包堂']];
+  const GROUPS = [['common', '共用功能'], ['skin', '臉部專屬'], ['multi', '多位老師才需要'], ['package', '包堂'], ['order', '訂購型專屬']];
   const LEGACY_BODY = { schedule: 'multi', commission: 'multi', packages: 'package', teacherNotify: 'common' };
   const scopeOf = (key, mod) => (mod.scope === 'body' ? LEGACY_BODY[key] : mod.scope);
   const entries = Object.entries(config.data.modules);

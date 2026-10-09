@@ -172,7 +172,7 @@ export function createApp({ db, config }) {
   // ---- 遠端管理（呼叫各店系統的 /api/remote/*）----
   // 各店有兩把金鑰：讀取金鑰看數字與模組狀態、寫入金鑰才能改模組。金鑰加密存放，不會回傳到畫面。
   // 功能模組只能在這裡改，店家自己的後台改不了。
-  const REMOTE_SYSTEMS = ['heyu', 'skin'];
+  const REMOTE_SYSTEMS = ['heyu', 'skin', 'order'];
   const validKey = (value) => typeof value === 'string' && value.length >= 32 && value.length <= 200 && !/\s/.test(value);
   const secret = config.remoteKeySecret ?? '';
 
