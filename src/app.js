@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { COOKIE_NAME, SESSION_MS, createLoginLimiter, issueSession, passwordMatches, readCookie, verifySession } from './auth.js';
 import { contractInfo, taipeiToday } from './contract.js';
 import { FIELD_NAMES, TYPE_FIELD_NAMES, checkContractOrder, parseStore, parseType } from './validate.js';
+import { LINK_FIELD_NAMES, normalizeImport, parseLink } from './links.js';
 import { RemoteError, callStore } from './remote.js';
 import { open, seal } from './secretbox.js';
 
@@ -38,7 +39,9 @@ export function createApp({ db, config }) {
     }
     next();
   });
-  app.use('/api', express.json({ limit: '32kb' }));
+  // 一般請求上限 32KB；匯入 Linkbase 備份檔的路徑另用 1MB，且在確認已登入之後才讀內容（見下方連結區塊）。
+  const smallJson = express.json({ limit: '32kb' });
+  app.use('/api', (request, response, next) => (request.method === 'POST' && request.path === '/links/import' ? next() : smallJson(request, response, next)));
 
   const fail = (response, status, error, fields) => response.status(status).json(fields ? { error, fields } : { error });
 
@@ -173,6 +176,96 @@ export function createApp({ db, config }) {
     });
     if (!removed) return fail(response, 404, '找不到這家店');
     response.json({ ok: true });
+  });
+
+  // ---- 連結（原 Linkbase：後台、部署、文件入口）----
+  // 刻意不存帳號密碼；匯入備份檔時帳號密碼會被丟掉，只回報有幾筆帶了帳密，提醒改放密碼管理器。
+  const LINK_COLUMNS = 'id, title, label, url, category, description, tags, note, status, pinned, store_id, created_at, updated_at';
+  const NO_STORE = '沒有這家店';
+  const storeExists = async (id) => (await db.query('SELECT 1 FROM stores WHERE id = $1', [id])).rows.length > 0;
+
+  app.get('/api/links', async (request, response) => {
+    const { rows } = await db.query(`SELECT ${LINK_COLUMNS} FROM links ORDER BY pinned DESC, lower(category), lower(title), lower(label), id`);
+    response.json({ links: rows });
+  });
+
+  app.post('/api/links', async (request, response) => {
+    const { value, errors } = parseLink(request.body, { partial: false });
+    if (value.store_id != null && !errors.store_id && !(await storeExists(value.store_id))) errors.store_id = NO_STORE;
+    if (Object.keys(errors).length) return fail(response, 400, '資料有誤', errors);
+    try {
+      const { rows } = await db.query(
+        `INSERT INTO links (title, label, url, category, description, tags, note, status, pinned, store_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING ${LINK_COLUMNS}`,
+        [value.title, value.label, value.url, value.category, value.description, value.tags, value.note, value.status, value.pinned, value.store_id],
+      );
+      response.status(201).json(rows[0]);
+    } catch (error) {
+      if (error?.code === '23503') return fail(response, 400, '資料有誤', { store_id: NO_STORE });
+      throw error;
+    }
+  });
+
+  app.patch('/api/links/:id', async (request, response) => {
+    const id = parseId(request.params.id);
+    if (id === null) return fail(response, 404, '找不到這個連結');
+    const { value, errors } = parseLink(request.body, { partial: true });
+    if (value.store_id != null && !errors.store_id && !(await storeExists(value.store_id))) errors.store_id = NO_STORE;
+    if (Object.keys(errors).length) return fail(response, 400, '資料有誤', errors);
+    try {
+      const result = await db.tx(async (tx) => {
+        const current = (await tx.query(`SELECT ${LINK_COLUMNS} FROM links WHERE id = $1 FOR UPDATE`, [id])).rows[0];
+        if (!current) return null;
+        // 只動有變的欄位；其餘（包含這次沒帶的欄位）維持原值。
+        const names = LINK_FIELD_NAMES.filter((name) => Object.hasOwn(value, name) && value[name] !== current[name]);
+        if (!names.length) return current;
+        const { rows } = await tx.query(
+          `UPDATE links SET ${names.map((name, index) => `${name} = $${index + 2}`).join(', ')}, updated_at = now() WHERE id = $1 RETURNING ${LINK_COLUMNS}`,
+          [id, ...names.map((name) => value[name])],
+        );
+        return rows[0];
+      });
+      if (!result) return fail(response, 404, '找不到這個連結');
+      response.json(result);
+    } catch (error) {
+      if (error?.code === '23503') return fail(response, 400, '資料有誤', { store_id: NO_STORE });
+      throw error;
+    }
+  });
+
+  app.delete('/api/links/:id', async (request, response) => {
+    const id = parseId(request.params.id);
+    const { rowCount } = id === null ? { rowCount: 0 } : await db.query('DELETE FROM links WHERE id = $1', [id]);
+    if (!rowCount) return fail(response, 404, '找不到這個連結');
+    response.json({ ok: true });
+  });
+
+  // 匯入 Linkbase 備份檔：以網址去重（資料庫已有的、同一批裡重複的都略過），不覆蓋手動修改過的資料。
+  app.post('/api/links/import', express.json({ limit: '1mb' }), async (request, response) => {
+    const stores = (await db.query('SELECT id, name FROM stores')).rows;
+    const parsed = normalizeImport(request.body, stores);
+    if (parsed.error) return fail(response, 400, parsed.error);
+    const { rows, invalid, withCredentials } = parsed;
+    const outcome = await db.tx(async (tx) => {
+      const seen = new Set((await tx.query('SELECT url FROM links')).rows.map((row) => row.url));
+      let imported = 0, duplicates = 0;
+      for (const row of rows) {
+        if (seen.has(row.url)) { duplicates += 1; continue; }
+        seen.add(row.url);
+        await tx.query(
+          `INSERT INTO links (title, label, url, category, description, tags, note, status, pinned, store_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [row.title, row.label, row.url, row.category, row.description, row.tags, row.note, row.status, row.pinned, row.store_id],
+        );
+        imported += 1;
+      }
+      await tx.query(
+        'INSERT INTO audit_log (action, store_name, detail) VALUES ($1, $2, $3::jsonb)',
+        ['links.import', '', JSON.stringify({ imported, duplicates, invalid: invalid.length, with_credentials: withCredentials })],
+      );
+      return { imported, duplicates };
+    });
+    response.json({ ...outcome, invalid, with_credentials: withCredentials });
   });
 
   // ---- 系統類型（可重複使用的範本；店家掛在類型底下）----

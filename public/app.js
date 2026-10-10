@@ -9,7 +9,9 @@ const FIELD_LABEL = {
 const ACTION_LABEL = {
   'store.create': '新增', 'store.update': '修改', 'store.delete': '刪除', 'store.remote_keys': '連線金鑰', 'store.modules': '功能模組',
   'type.create': '新增類型', 'type.update': '修改類型', 'type.delete': '刪除類型',
+  'links.import': '匯入連結',
 };
+const LINK_STATUS_LABEL = { active: '正常', pending: '待處理', hidden: '隱藏' };
 
 const money = (value) => `NT$${Number(value).toLocaleString('zh-TW')}`;
 const $ = (selector) => document.querySelector(selector);
@@ -41,7 +43,11 @@ async function api(path, { method = 'GET', body } = {}) {
   return { ok: response.ok, status: response.status, data };
 }
 
-const state = { stores: [], types: [], summary: null, audit: [], filter: 'all', view: 'stores' };
+const state = {
+  stores: [], types: [], links: [], summary: null, audit: [], filter: 'all', view: 'stores',
+  linkFilter: 'all', linkQuery: '', linkStore: null, expanded: new Set(),
+};
+const SHOWN_LINKS = 3; // 店家卡片最多直接露出幾個連結，其餘展開才看
 
 const typeOf = (key) => state.types.find((type) => type.key === key);
 const typeLabel = (key) => typeOf(key)?.label ?? LEGACY_TYPE_LABEL[key] ?? key;
@@ -96,11 +102,17 @@ function renderList() {
     const { progress, state: kind } = store.contract;
     const fill = h('span', { class: `bar-fill is-${kind}` });
     if (progress !== null) fill.style.width = `${Math.round(progress * 100)}%`;
+    const related = relatedLinks(store);
+    const only = related.length === 1 ? related[0] : null;
     box.append(h('article', { class: `store status-${store.status}` },
       h('div', { class: 'store-main' },
-        h('h2', {}, store.name),
+        // 只有一個連結時，不另外放按鈕，店名本身就是入口。
+        h('h2', {}, only
+          ? h('a', { class: 'store-name-link', href: only.url, target: '_blank', rel: 'noopener noreferrer', title: `開啟：${only.label || only.title}` }, store.name)
+          : store.name),
         h('p', { class: 'muted' }, typeLabel(store.system_type)),
-        store.notes && h('p', { class: 'notes' }, store.notes)),
+        store.notes && h('p', { class: 'notes' }, store.notes),
+        storeLinks(store, related)),
       h('div', { class: 'store-status' }, h('span', { class: `badge is-${store.status}` }, STATUS_LABEL[store.status])),
       h('div', { class: 'store-fee' },
         h('span', { class: 'fee' }, store.monthly_fee ? `${money(store.monthly_fee)} /月` : '未設定月費'),
@@ -111,9 +123,40 @@ function renderList() {
       h('div', { class: 'store-url' }, store.url ? h('a', { href: store.url, target: '_blank', rel: 'noopener noreferrer' }, store.url.replace(/^https?:\/\//, '')) : h('span', { class: 'muted' }, '未填網址')),
       h('div', { class: 'store-actions' },
         remoteSupported(store) && h('button', { type: 'button', class: 'btn quiet', onclick: () => openRemote(store) }, '店家頁'),
+        h('button', { type: 'button', class: 'btn quiet', onclick: () => showStoreLinks(store) }, ownLinkCount(store) ? `連結 ${ownLinkCount(store)}` : '連結'),
         h('button', { type: 'button', class: 'btn quiet', onclick: () => openDialog(store) }, '編輯')),
     ));
   }
+}
+
+// 屬於這家店的連結（不含隱藏的）。釘選的排最前面，其次正常的，最後待處理的。
+const ownLinkCount = (store) => state.links.filter((link) => link.store_id === store.id).length;
+function relatedLinks(store) {
+  const rank = (link) => (link.pinned ? 0 : 2) + (link.status === 'pending' ? 1 : 0);
+  return state.links.filter((link) => link.store_id === store.id && link.status !== 'hidden').sort((a, b) => rank(a) - rank(b));
+}
+
+// 店家卡片上的快速連結：最多露出 SHOWN_LINKS 個，其餘按「另 N 個」展開。0 或 1 個時不顯示（1 個由店名直接開啟）。
+function storeLinks(store, related) {
+  if (related.length < 2) return null;
+  const open = state.expanded.has(store.id);
+  const shown = open ? related : related.slice(0, SHOWN_LINKS);
+  const rest = related.length - SHOWN_LINKS;
+  return h('div', { class: 'store-links' },
+    shown.map((link) => h('a', { class: 'quick-link', href: link.url, target: '_blank', rel: 'noopener noreferrer', title: link.title }, link.label || link.title)),
+    rest > 0 && h('button', {
+      type: 'button', class: 'quick-more', 'aria-expanded': String(open),
+      onclick: () => { if (open) state.expanded.delete(store.id); else state.expanded.add(store.id); renderList(); },
+    }, open ? '收合' : `另 ${rest} 個`));
+}
+
+// 從店家卡片進到這家店的連結（新增、編輯、隱藏都在這裡）。
+function showStoreLinks(store) {
+  state.linkStore = store.id;
+  state.linkQuery = '';
+  $('#link-search').value = '';
+  setView('links');
+  renderLinks();
 }
 
 function formatValue(key, value) {
@@ -135,6 +178,10 @@ function renderAudit() {
     if (entry.action === 'store.update') {
       detail = Object.entries(entry.detail.changes ?? {}).map(([key, change]) =>
         key === 'notes' ? '備註已更新' : `${FIELD_LABEL[key] ?? key}：${formatValue(key, change.from)} → ${formatValue(key, change.to)}`).join('；');
+    }
+    if (entry.action === 'links.import') {
+      const d = entry.detail ?? {};
+      detail = `新增 ${d.imported ?? 0} 筆，略過重複 ${d.duplicates ?? 0} 筆，無法匯入 ${d.invalid ?? 0} 筆`;
     }
     if (entry.action === 'type.update') {
       detail = Object.entries(entry.detail.changes ?? {}).map(([key, change]) => {
@@ -187,20 +234,214 @@ function fillTypeSelect(selected) {
   select.value = selected ?? 'other';
 }
 
+// ---------- 連結 ----------
+const hostOf = (url) => { try { return new URL(url).hostname; } catch { return url; } };
+
+const storeName = (id) => state.stores.find((store) => store.id === id)?.name ?? '';
+
+// 預設只列獨立的常用工具；從店家卡片進來時只列那家店的；搜尋時連店家的連結一起找。
+function visibleLinks() {
+  const query = state.linkQuery.trim().toLowerCase();
+  return state.links.filter((link) => {
+    if (state.linkStore != null) { if (link.store_id !== state.linkStore) return false; }
+    else if (!query && link.store_id != null) return false;
+    if (state.linkFilter !== 'all' && link.status !== state.linkFilter) return false;
+    if (!query) return true;
+    return [link.title, link.label, link.tags, link.category, link.description, storeName(link.store_id)].some((text) => text.toLowerCase().includes(query));
+  });
+}
+
+function renderLinkScope() {
+  const box = $('#link-scope');
+  box.replaceChildren();
+  box.hidden = state.linkStore == null;
+  $('#links-hint').hidden = state.linkStore != null;
+  if (state.linkStore == null) return;
+  box.append(
+    h('span', {}, `店家連結：${storeName(state.linkStore)}`),
+    h('button', { type: 'button', class: 'btn quiet', onclick: () => { state.linkStore = null; renderLinks(); } }, '回到常用工具'));
+}
+
+// 釘選的排最前面，其餘依分類分組；同分類、同名稱的連結合成一張卡。
+async function setPinned(card, pinned) {
+  const results = await Promise.all(card.links.filter((link) => link.pinned !== pinned).map((link) => api(`/api/links/${link.id}`, { method: 'PATCH', body: { pinned } })));
+  const bad = results.find((result) => !result.ok);
+  showLinksNote('#links-error', bad ? (bad.data.error ?? '操作失敗，請稍後再試') : '');
+  await load();
+}
+
+function renderLinks() {
+  const box = $('#link-list');
+  box.replaceChildren();
+  renderLinkScope();
+  const shown = visibleLinks();
+  if (!shown.length) {
+    const none = state.linkStore != null ? '這家店還沒有連結。按右上角「新增連結」。'
+      : state.links.length ? '沒有符合條件的連結。' : '還沒有連結。按右上角「新增連結」，或到頁面最下面從 Linkbase 匯入舊資料。';
+    box.append(h('p', { class: 'empty' }, none));
+    return;
+  }
+  const cards = new Map();
+  for (const link of shown) {
+    const key = `${link.category}\u0000${link.title}`;
+    if (!cards.has(key)) cards.set(key, { category: link.category, title: link.title, links: [] });
+    cards.get(key).links.push(link);
+  }
+  const sections = new Map();
+  const place = (name, card) => { if (!sections.has(name)) sections.set(name, []); sections.get(name).push(card); };
+  for (const card of cards.values()) place(card.links.some((link) => link.pinned) ? '釘選' : (card.category || '未分類'), card);
+  const names = [...sections.keys()].sort((a, b) => (a === '釘選' ? -1 : b === '釘選' ? 1 : a === '未分類' ? 1 : b === '未分類' ? -1 : a.localeCompare(b, 'zh-Hant')));
+  for (const name of names) {
+    box.append(h('h2', { class: 'link-section' }, name), h('div', { class: 'link-cards' }, sections.get(name).map((card) => linkCard(card, name))));
+  }
+}
+
+// 只有一個連結：項目名稱本身就能開啟，不另外放按鈕。有多個連結：每個連結一顆黑框按鈕。
+function linkCard(card, sectionName) {
+  const first = card.links[0];
+  const many = card.links.length > 1;
+  const pinned = card.links.every((link) => link.pinned);
+  const owner = state.linkStore == null ? storeName(first.store_id) : '';
+  const open = (link) => ({ href: link.url, target: '_blank', rel: 'noopener noreferrer', title: hostOf(link.url) });
+  return h('article', { class: `link-card status-${first.status}` },
+    h('div', { class: 'link-head' },
+      h('h3', {}, many ? card.title : h('a', { class: 'card-title-link', ...open(first) }, card.title)),
+      first.status !== 'active' && h('span', { class: `badge ${first.status === 'pending' ? 'is-building' : 'is-paused'}` }, LINK_STATUS_LABEL[first.status])),
+    (owner || (sectionName === '釘選' && card.category)) && h('div', { class: 'link-meta' },
+      owner && h('span', { class: 'chip-static' }, owner),
+      sectionName === '釘選' && card.category && h('span', { class: 'chip-static' }, card.category)),
+    first.description && h('p', { class: 'muted' }, first.description),
+    first.tags && h('p', { class: 'hint' }, `標籤：${first.tags}`),
+    many && h('ul', { class: 'link-urls' }, card.links.map((link) => h('li', {},
+      h('a', { class: 'quick-link', ...open(link) }, link.label || hostOf(link.url)),
+      h('button', { type: 'button', class: 'link-tool', onclick: () => openLinkDialog(link) }, '編輯')))),
+    first.note && h('p', { class: 'notes' }, first.note),
+    // 次要操作統一放在卡片底部：釘選；只有一個連結時也在這裡編輯。
+    h('div', { class: 'link-foot' },
+      h('button', { type: 'button', class: 'link-tool', onclick: () => setPinned(card, !pinned) }, pinned ? '取消釘選' : '釘選'),
+      !many && h('button', { type: 'button', class: 'link-tool', onclick: () => openLinkDialog(first) }, '編輯')));
+}
+
+const linkDialog = $('#link-dialog');
+const linkForm = $('#link-form');
+let editingLink = null;
+
+function showLinkErrors(fields = {}, general = '') {
+  for (const node of linkForm.querySelectorAll('[data-error]')) {
+    const message = fields[node.dataset.error];
+    node.textContent = message ?? '';
+    node.hidden = !message;
+  }
+  const box = $('#link-form-error');
+  const unmatched = Object.entries(fields).filter(([key]) => !linkForm.querySelector(`[data-error="${key}"]`)).map(([, message]) => message);
+  box.textContent = [general, ...unmatched].filter(Boolean).join('；');
+  box.hidden = !box.textContent;
+}
+
+function openLinkDialog(link) {
+  editingLink = link ?? null;
+  $('#link-dialog-title').textContent = link ? `編輯連結：${link.title}` : '新增連結';
+  // 從店家的連結清單按「新增連結」時，預設掛在那家店底下。
+  const values = link ?? { title: '', label: '', url: '', category: '', description: '', tags: '', note: '', status: 'active', pinned: false, store_id: state.linkStore };
+  const f = linkForm.elements;
+  for (const key of ['title', 'label', 'url', 'category', 'description', 'tags', 'note', 'status']) f[key].value = values[key];
+  f.pinned.checked = values.pinned;
+  f.store_id.replaceChildren(h('option', { value: '' }, '（不屬於任何店家）'), ...state.stores.map((store) => h('option', { value: String(store.id) }, store.name)));
+  f.store_id.value = values.store_id == null ? '' : String(values.store_id);
+  $('#link-categories').replaceChildren(...[...new Set(state.links.map((item) => item.category).filter(Boolean))].map((name) => h('option', { value: name })));
+  $('#link-delete-btn').hidden = !link;
+  showLinkErrors();
+  linkDialog.showModal();
+  f.title.focus();
+}
+
+function readLinkForm() {
+  const f = linkForm.elements;
+  return {
+    title: f.title.value.trim(), label: f.label.value.trim(), url: f.url.value.trim(), category: f.category.value.trim(),
+    description: f.description.value.trim(), tags: f.tags.value.trim(), note: f.note.value.trim(), status: f.status.value,
+    pinned: f.pinned.checked, store_id: f.store_id.value === '' ? null : Number(f.store_id.value),
+  };
+}
+
+linkForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const values = readLinkForm();
+  let result;
+  if (editingLink) {
+    // 只送出有改的欄位。
+    const changed = Object.fromEntries(Object.entries(values).filter(([key, value]) => value !== editingLink[key]));
+    if (!Object.keys(changed).length) { linkDialog.close(); return; }
+    result = await api(`/api/links/${editingLink.id}`, { method: 'PATCH', body: changed });
+  } else {
+    result = await api('/api/links', { method: 'POST', body: values });
+  }
+  if (!result.ok) { showLinkErrors(result.data.fields, result.data.fields ? '' : result.data.error); return; }
+  linkDialog.close();
+  await load();
+});
+
+$('#link-cancel-btn').addEventListener('click', () => linkDialog.close());
+linkDialog.addEventListener('click', (event) => { if (event.target === linkDialog) linkDialog.close(); });
+
+$('#link-delete-btn').addEventListener('click', async () => {
+  if (!editingLink) return;
+  if (!confirm(`確定刪除「${editingLink.title}${editingLink.label ? `（${editingLink.label}）` : ''}」這個連結？`)) return;
+  const result = await api(`/api/links/${editingLink.id}`, { method: 'DELETE' });
+  if (!result.ok) { showLinkErrors({}, result.data.error); return; }
+  linkDialog.close();
+  await load();
+});
+
+$('#add-link-btn').addEventListener('click', () => openLinkDialog(null));
+$('#link-search').addEventListener('input', (event) => { state.linkQuery = event.target.value; renderLinks(); });
+for (const button of document.querySelectorAll('.link-filter')) {
+  button.addEventListener('click', () => {
+    state.linkFilter = button.dataset.linkFilter;
+    for (const other of document.querySelectorAll('.link-filter')) other.classList.toggle('is-active', other === button);
+    renderLinks();
+  });
+}
+
+// 匯入 Linkbase 備份檔（JSON）。帳號密碼不會被存進來。
+const showLinksNote = (selector, text) => { const node = $(selector); node.textContent = text ?? ''; node.hidden = !text; };
+
+$('#import-links-btn').addEventListener('click', () => $('#import-file').click());
+$('#import-file').addEventListener('change', async (event) => {
+  const input = event.target;
+  const file = input.files?.[0];
+  input.value = '';
+  showLinksNote('#links-msg', ''); showLinksNote('#links-error', '');
+  if (!file) return;
+  let data;
+  try { data = JSON.parse(await file.text()); } catch { showLinksNote('#links-error', '這個檔案不是正確的 JSON 備份檔。'); return; }
+  const result = await api('/api/links/import', { method: 'POST', body: data });
+  if (!result.ok) { showLinksNote('#links-error', result.data.error ?? '匯入失敗，請稍後再試。'); return; }
+  const { imported, duplicates, invalid, with_credentials: withCredentials } = result.data;
+  const parts = [`匯入完成：新增 ${imported} 筆，略過重複 ${duplicates} 筆`];
+  if (invalid.length) parts.push(`${invalid.length} 筆無法匯入（${invalid.slice(0, 5).join('、')}${invalid.length > 5 ? '…' : ''}）`);
+  if (withCredentials) parts.push(`備份裡有 ${withCredentials} 個項目帶帳號密碼，這裡不會存，請放進密碼管理器`);
+  showLinksNote('#links-msg', `${parts.join('；')}。`);
+  await load();
+});
+
 function setView(view) {
   state.view = view;
   $('#view-stores').hidden = view !== 'stores';
   $('#view-types').hidden = view !== 'types';
+  $('#view-links').hidden = view !== 'links';
   $('#add-btn').hidden = view !== 'stores';
   $('#add-type-btn').hidden = view !== 'types';
+  $('#add-link-btn').hidden = view !== 'links';
   for (const tab of document.querySelectorAll('.tab')) tab.classList.toggle('is-active', tab.dataset.view === view);
 }
 
-function renderAll() { renderSummary(); renderAttention(); renderList(); renderTypes(); renderAudit(); }
+function renderAll() { renderSummary(); renderAttention(); renderList(); renderTypes(); renderLinks(); renderAudit(); }
 
 async function load() {
-  const [stores, summary, audit, types] = await Promise.all([api('/api/stores'), api('/api/summary'), api('/api/audit?limit=30'), api('/api/types')]);
+  const [stores, summary, audit, types, links] = await Promise.all([api('/api/stores'), api('/api/summary'), api('/api/audit?limit=30'), api('/api/types'), api('/api/links')]);
   state.types = types.data.types ?? [];
+  state.links = links.data.links ?? [];
   state.stores = stores.data.stores ?? [];
   state.summary = summary.data;
   state.audit = audit.data.entries ?? [];
@@ -515,7 +756,13 @@ $('#type-delete-btn').addEventListener('click', async () => {
   await load();
 });
 
-for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => setView(tab.dataset.view));
+for (const tab of document.querySelectorAll('.tab')) {
+  tab.addEventListener('click', () => {
+    // 直接按「連結」分頁回到獨立的常用工具；從店家卡片進來的範圍只在那一次有效。
+    if (tab.dataset.view === 'links' && state.linkStore != null) { state.linkStore = null; renderLinks(); }
+    setView(tab.dataset.view);
+  });
+}
 $('#add-type-btn').addEventListener('click', () => openTypeDialog(null));
 
 $('#add-btn').addEventListener('click', () => openDialog(null));

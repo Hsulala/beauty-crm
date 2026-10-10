@@ -71,7 +71,7 @@ main { max-width: 1080px; margin: 0 auto; padding: 24px; }
 
 /* 店家列表 */
 .store-list { display: grid; gap: 0; border-top: 1px solid var(--rule); }
-.store { display: grid; grid-template-columns: minmax(0, 2.2fr) 90px 150px minmax(0, 2fr) minmax(0, 1.4fr) 150px; gap: 16px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--rule); }
+.store { display: grid; grid-template-columns: minmax(0, 2.2fr) 90px 150px minmax(0, 2fr) minmax(0, 1.4fr) 236px; gap: 16px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--rule); }
 .store-main { min-width: 0; }
 .store-main h2 { font-size: 17px; overflow-wrap: anywhere; }
 .notes { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -231,7 +231,7 @@ label { color: var(--ink); }
 .tabs { display: flex; gap: 10px; margin: 0 0 18px; }
 .tab { font: inherit; font-weight: 800; cursor: pointer; border: 2.5px solid var(--ink); border-radius: 999px; background: #fff; color: var(--ink); padding: 6px 22px; box-shadow: 3px 3px 0 var(--ink); }
 .tab:hover { background: var(--accent-soft); }
-.tab.is-active { background: var(--accent); color: #fff; }
+.tab.is-active { background: var(--ink); color: #fff; }
 .types-intro { margin-bottom: 16px; }
 .type-list { display: grid; gap: 16px; }
 .type-card { display: grid; gap: 8px; background: #fff; border: 3px solid var(--ink); border-radius: 18px; box-shadow: 5px 5px 0 var(--ink); padding: 16px 20px; }
@@ -246,6 +246,52 @@ label { color: var(--ink); }
 .chip.status-ended, .chip.status-paused { color: var(--muted); }
 .check-row { display: flex; align-items: center; gap: 10px; font-weight: 600; cursor: pointer; }
 .check-row input { width: auto; flex: none; accent-color: var(--accent); }
+
+/* 連結 */
+.top-actions { flex-wrap: wrap; justify-content: flex-end; }
+.links-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.links-bar input[type="search"] { width: min(360px, 100%); }
+.links-filters { margin: 0; }
+.link-filter { font: inherit; cursor: pointer; border: 2.5px solid var(--ink); border-radius: 999px; background: #fff; padding: 5px 16px; color: var(--ink); font-weight: 700; box-shadow: 2px 2px 0 var(--ink); }
+.link-filter:hover { background: var(--accent-soft); }
+.link-filter.is-active { background: var(--ink); color: #fff; }
+.link-list { display: grid; gap: 14px; margin-top: 16px; }
+.link-section { font-family: var(--display); font-style: italic; font-weight: 800; font-size: 24px; color: var(--accent); margin: 10px 0 0; }
+.link-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.link-card { display: flex; flex-direction: column; gap: 6px; background: #fff; border: 3px solid var(--ink); border-radius: 18px; box-shadow: 5px 5px 0 var(--ink); padding: 14px 18px; min-width: 0; }
+.link-card.status-hidden { opacity: .6; }
+.link-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.link-head h3 { font-weight: 900; font-size: 17px; margin: 0; overflow-wrap: anywhere; }
+.link-head { justify-content: flex-start; }
+.link-urls { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 8px; }
+.link-urls li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.chip-static { font-size: 13px; font-weight: 700; border: 2px solid var(--ink); border-radius: 999px; padding: 0 10px; background: #fff; white-space: nowrap; }
+
+/* 快速連結：一律黑框白底，不因為是連結就變橘色；橘色只留給新增、儲存這類主要操作 */
+.quick-link, .quick-more { font: inherit; font-size: 13.5px; font-weight: 700; line-height: 1.5; color: var(--ink); text-decoration: none; cursor: pointer; border: 2.5px solid var(--ink); border-radius: 999px; background: #fff; padding: 1px 14px; box-shadow: 2px 2px 0 var(--ink); transition: transform .08s, box-shadow .08s; max-width: 100%; overflow-wrap: anywhere; }
+.quick-link:hover, .quick-more:hover { background: var(--paper); transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--ink); }
+.quick-more { background: transparent; box-shadow: none; border-style: dashed; color: var(--muted); }
+.quick-more:hover { box-shadow: none; transform: none; color: var(--ink); }
+.store-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.store-name-link, .card-title-link { color: var(--ink); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; text-decoration-color: var(--ink); }
+.store-name-link:hover, .card-title-link:hover { background: var(--paper); }
+
+/* 卡片上的次要操作（編輯、釘選）：小字、不搶眼 */
+.link-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.link-foot { display: flex; justify-content: flex-end; gap: 14px; margin-top: auto; padding-top: 6px; }
+.store-actions { flex-wrap: nowrap; }
+.store-actions .btn { padding: 6px 14px; }
+.link-tool { font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.link-tool:hover { color: var(--ink); }
+
+/* 範圍列：看某家店的連結時顯示 */
+.link-scope { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; padding: 8px 16px; background: #fff; border: 3px solid var(--ink); border-radius: 18px; box-shadow: 4px 4px 0 var(--ink); font-weight: 700; }
+
+/* 一次性匯入：收在頁面最下面，用完就不需要再看 */
+.import-box { margin-top: 28px; }
+.import-box summary { cursor: pointer; font-weight: 700; color: var(--muted); padding: 6px 0; }
+.import-box[open] summary { color: var(--ink); }
+.import-box .section-actions { margin-top: 8px; }
 @media (max-width: 860px) {
   .top { padding: 18px 16px 4px; }
   .top { flex-wrap: wrap; align-items: center; }

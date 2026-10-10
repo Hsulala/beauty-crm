@@ -10,10 +10,10 @@ import { MIGRATIONS, startApp } from './helpers/app.js';
 test('migration：第二次執行不會重跑，資料表都建好了', async () => {
   const db = await createPgliteDb();
   try {
-    assert.deepEqual(await migrate(db, MIGRATIONS), ['001_init.sql', '002_store_remote.sql', '003_system_types.sql']);
+    assert.deepEqual(await migrate(db, MIGRATIONS), ['001_init.sql', '002_store_remote.sql', '003_system_types.sql', '004_links.sql']);
     assert.deepEqual(await migrate(db, MIGRATIONS), []);
     const tables = (await db.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")).rows.map((r) => r.table_name);
-    for (const name of ['stores', 'audit_log', 'schema_migrations', 'store_remote', 'system_types']) assert.ok(tables.includes(name), name);
+    for (const name of ['stores', 'audit_log', 'schema_migrations', 'store_remote', 'system_types', 'links']) assert.ok(tables.includes(name), name);
   } finally { await db.close(); }
 });
 
