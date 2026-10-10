@@ -25,7 +25,7 @@
     <nav class="tabs" role="group" aria-label="切換檢視">
       <button type="button" class="tab is-active" data-view="stores">店家</button>
       <button type="button" class="tab" data-view="types">系統類型</button>
-      <button type="button" class="tab" data-view="links">連結</button>
+      <button type="button" class="tab" data-view="links">常用工具</button>
     </nav>
 
     <div id="view-stores">
@@ -59,10 +59,11 @@
           <button type="button" class="link-filter" data-link-filter="hidden">隱藏</button>
         </div>
       </div>
+      <div id="link-category-filters" class="filters category-filters" role="group" aria-label="依分類篩選常用工具"></div>
       <div id="link-scope" class="link-scope" hidden></div>
       <p class="ok-note" id="links-msg" role="status" hidden></p>
       <p class="field-error" id="links-error" role="alert" hidden></p>
-      <p class="hint" id="links-hint">這裡放獨立的常用工具。屬於某家店的連結會顯示在店家卡片上，搜尋時也找得到。只存連結，不存帳號密碼，請放在密碼管理器。</p>
+      <p class="hint" id="links-hint">這裡集中所有日常會用到的工具與店家連結。可用分類快速切換，釘選的工具會排在最前面。只存連結，不存帳號密碼，請放在密碼管理器。</p>
       <section id="link-list" class="link-list" aria-label="連結清單"></section>
 
       <details class="import-box">
@@ -86,7 +87,7 @@
       <h2 id="dialog-title">新增店家</h2>
 
       <div class="field" id="icon-field" hidden>
-        <span class="field-label">小圖示</span>
+        <span class="field-label">顧客頁面 Logo</span>
         <div class="icon-edit">
           <span id="icon-preview" class="store-icon is-lg"></span>
           <div class="section-actions">
@@ -96,7 +97,7 @@
           </div>
         </div>
         <input type="file" id="icon-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
-        <p class="hint">建議用正方形圖片，會自動縮成 128×128。圖示會立即儲存，不需按下方的儲存。</p>
+        <p class="hint">建議用正方形圖片，會自動縮成 128×128。Logo 會立即儲存，不需按下方的儲存。</p>
         <p class="field-error" id="icon-error" hidden></p>
       </div>
 
@@ -254,8 +255,8 @@
       <div class="field-row">
         <div class="field">
           <label for="l-category">分類</label>
-          <input id="l-category" name="category" type="text" maxlength="30" list="link-categories" autocomplete="off">
-          <datalist id="link-categories"></datalist>
+          <select id="l-category" name="category"></select>
+          <input id="l-category-new" type="text" maxlength="30" placeholder="輸入新分類名稱" autocomplete="off" hidden>
           <p class="field-error" data-error="category" hidden></p>
         </div>
         <div class="field">

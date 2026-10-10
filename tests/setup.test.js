@@ -79,6 +79,11 @@ test('頁面守門：沒有行內程式、沒有表情符號，且 HTML 用到�
   const html = readFileSync(join(dir, 'index.html'), 'utf8'), js = readFileSync(join(dir, 'app.js'), 'utf8');
   for (const [, id] of js.matchAll(/\$\('#([\w-]+)'\)/g)) assert.ok(html.includes(`id="${id}"`), `app.js 用到 #${id}，HTML 找不到`);
   for (const key of ['name', 'system_type', 'url', 'status', 'monthly_fee', 'contract_start', 'contract_end', 'notes']) assert.ok(html.includes(`name="${key}"`), `表單缺少欄位 ${key}`);
+  assert.match(html, /data-view="links">常用工具</);
+  assert.match(html, /<select id="l-category" name="category">/);
+  assert.ok(html.includes('id="link-category-filters"'));
+  assert.equal(js.includes("else if (!query && link.store_id != null) return false"), false, '常用工具不可預設隱藏店家連結');
+  assert.equal(js.includes("onclick: () => showStoreLinks(store)"), false, '店家卡片不應再放連結管理按鈕');
 });
 
 test('專案檔案齊全：env 範例、部署設定、交接文件', () => {

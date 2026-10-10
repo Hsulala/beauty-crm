@@ -252,6 +252,7 @@ label { color: var(--ink); }
 .links-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .links-bar input[type="search"] { width: min(360px, 100%); }
 .links-filters { margin: 0; }
+.category-filters { margin: 0 0 12px; }
 .link-filter { font: inherit; cursor: pointer; border: 2.5px solid var(--ink); border-radius: 999px; background: #fff; padding: 5px 16px; color: var(--ink); font-weight: 700; box-shadow: 2px 2px 0 var(--ink); }
 .link-filter:hover { background: var(--accent-soft); }
 .link-filter.is-active { background: var(--ink); color: #fff; }
@@ -302,7 +303,7 @@ label { color: var(--ink); }
 }
 
 /* 店家小圖示 */
-.store-main { display: flex; gap: 14px; align-items: flex-start; }
+.store-main { display: block; }
 .store-text { min-width: 0; }
 .store-icon { flex: none; width: 48px; height: 48px; border: 2.5px solid var(--ink); border-radius: 12px; overflow: hidden; background: #fff; display: inline-grid; place-items: center; }
 .store-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }

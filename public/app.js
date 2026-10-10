@@ -7,7 +7,7 @@ const FIELD_LABEL = {
   contract_start: '合約起日', contract_end: '合約到期日', notes: '備註',
 };
 const ACTION_LABEL = {
-  'store.icon': '小圖示', 'store.create': '新增', 'store.update': '修改', 'store.delete': '刪除', 'store.remote_keys': '連線金鑰', 'store.modules': '功能模組',
+  'store.icon': '顧客頁面 Logo', 'store.create': '新增', 'store.update': '修改', 'store.delete': '刪除', 'store.remote_keys': '連線金鑰', 'store.modules': '功能模組',
   'type.create': '新增類型', 'type.update': '修改類型', 'type.delete': '刪除類型',
   'links.import': '匯入連結',
 };
@@ -45,9 +45,8 @@ async function api(path, { method = 'GET', body } = {}) {
 
 const state = {
   stores: [], types: [], links: [], summary: null, audit: [], filter: 'all', view: 'stores',
-  linkFilter: 'all', linkQuery: '', linkStore: null, expanded: new Set(),
+  linkFilter: 'all', linkCategory: 'all', linkQuery: '', linkStore: null,
 };
-const SHOWN_LINKS = 3; // 店家卡片最多直接露出幾個連結，其餘展開才看
 
 const typeOf = (key) => state.types.find((type) => type.key === key);
 const typeLabel = (key) => typeOf(key)?.label ?? LEGACY_TYPE_LABEL[key] ?? key;
@@ -102,19 +101,12 @@ function renderList() {
     const { progress, state: kind } = store.contract;
     const fill = h('span', { class: `bar-fill is-${kind}` });
     if (progress !== null) fill.style.width = `${Math.round(progress * 100)}%`;
-    const related = relatedLinks(store);
-    const only = related.length === 1 ? related[0] : null;
     box.append(h('article', { class: `store status-${store.status}` },
       h('div', { class: 'store-main' },
-        iconNode(store),
         h('div', { class: 'store-text' },
-          // 只有一個連結時，不另外放按鈕，店名本身就是入口。
-          h('h2', {}, only
-            ? h('a', { class: 'store-name-link', href: only.url, target: '_blank', rel: 'noopener noreferrer', title: `開啟：${only.label || only.title}` }, store.name)
-            : store.name),
+          h('h2', {}, store.name),
           h('p', { class: 'muted' }, typeLabel(store.system_type)),
-          store.notes && h('p', { class: 'notes' }, store.notes),
-          storeLinks(store, related))),
+          store.notes && h('p', { class: 'notes' }, store.notes))),
       h('div', { class: 'store-status' }, h('span', { class: `badge is-${store.status}` }, STATUS_LABEL[store.status])),
       h('div', { class: 'store-fee' },
         h('span', { class: 'fee' }, store.monthly_fee ? `${money(store.monthly_fee)} /月` : '未設定月費'),
@@ -125,40 +117,9 @@ function renderList() {
       h('div', { class: 'store-url' }, store.url ? h('a', { href: store.url, target: '_blank', rel: 'noopener noreferrer' }, store.url.replace(/^https?:\/\//, '')) : h('span', { class: 'muted' }, '未填網址')),
       h('div', { class: 'store-actions' },
         remoteSupported(store) && h('button', { type: 'button', class: 'btn quiet', onclick: () => openRemote(store) }, '店家頁'),
-        h('button', { type: 'button', class: 'btn quiet', onclick: () => showStoreLinks(store) }, ownLinkCount(store) ? `連結 ${ownLinkCount(store)}` : '連結'),
         h('button', { type: 'button', class: 'btn quiet', onclick: () => openDialog(store) }, '編輯')),
     ));
   }
-}
-
-// 屬於這家店的連結（不含隱藏的）。釘選的排最前面，其次正常的，最後待處理的。
-const ownLinkCount = (store) => state.links.filter((link) => link.store_id === store.id).length;
-function relatedLinks(store) {
-  const rank = (link) => (link.pinned ? 0 : 2) + (link.status === 'pending' ? 1 : 0);
-  return state.links.filter((link) => link.store_id === store.id && link.status !== 'hidden').sort((a, b) => rank(a) - rank(b));
-}
-
-// 店家卡片上的快速連結：最多露出 SHOWN_LINKS 個，其餘按「另 N 個」展開。0 或 1 個時不顯示（1 個由店名直接開啟）。
-function storeLinks(store, related) {
-  if (related.length < 2) return null;
-  const open = state.expanded.has(store.id);
-  const shown = open ? related : related.slice(0, SHOWN_LINKS);
-  const rest = related.length - SHOWN_LINKS;
-  return h('div', { class: 'store-links' },
-    shown.map((link) => h('a', { class: 'quick-link', href: link.url, target: '_blank', rel: 'noopener noreferrer', title: link.title }, link.label || link.title)),
-    rest > 0 && h('button', {
-      type: 'button', class: 'quick-more', 'aria-expanded': String(open),
-      onclick: () => { if (open) state.expanded.delete(store.id); else state.expanded.add(store.id); renderList(); },
-    }, open ? '收合' : `另 ${rest} 個`));
-}
-
-// 從店家卡片進到這家店的連結（新增、編輯、隱藏都在這裡）。
-function showStoreLinks(store) {
-  state.linkStore = store.id;
-  state.linkQuery = '';
-  $('#link-search').value = '';
-  setView('links');
-  renderLinks();
 }
 
 function formatValue(key, value) {
@@ -241,16 +202,26 @@ const hostOf = (url) => { try { return new URL(url).hostname; } catch { return u
 
 const storeName = (id) => state.stores.find((store) => store.id === id)?.name ?? '';
 
-// 預設只列獨立的常用工具；從店家卡片進來時只列那家店的；搜尋時連店家的連結一起找。
+// 常用工具預設列出全部連結；可再用店家、分類、狀態與搜尋縮小範圍。
 function visibleLinks() {
   const query = state.linkQuery.trim().toLowerCase();
   return state.links.filter((link) => {
     if (state.linkStore != null) { if (link.store_id !== state.linkStore) return false; }
-    else if (!query && link.store_id != null) return false;
+    if (state.linkCategory !== 'all' && (link.category || '') !== state.linkCategory) return false;
     if (state.linkFilter !== 'all' && link.status !== state.linkFilter) return false;
     if (!query) return true;
     return [link.title, link.label, link.tags, link.category, link.description, storeName(link.store_id)].some((text) => text.toLowerCase().includes(query));
   });
+}
+
+function renderCategoryFilters() {
+  const box = $('#link-category-filters');
+  const categories = [...new Set(state.links.map((link) => link.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  if (state.linkCategory !== 'all' && !categories.includes(state.linkCategory)) state.linkCategory = 'all';
+  box.replaceChildren(
+    h('button', { type: 'button', class: `link-filter${state.linkCategory === 'all' ? ' is-active' : ''}`, onclick: () => { state.linkCategory = 'all'; renderLinks(); } }, '所有分類'),
+    ...categories.map((category) => h('button', { type: 'button', class: `link-filter${state.linkCategory === category ? ' is-active' : ''}`, onclick: () => { state.linkCategory = category; renderLinks(); } }, category)),
+  );
 }
 
 function renderLinkScope() {
@@ -276,6 +247,7 @@ function renderLinks() {
   const box = $('#link-list');
   box.replaceChildren();
   renderLinkScope();
+  renderCategoryFilters();
   const shown = visibleLinks();
   if (!shown.length) {
     const none = state.linkStore != null ? '這家店還沒有連結。按右上角「新增連結」。'
@@ -346,11 +318,16 @@ function openLinkDialog(link) {
   // 從店家的連結清單按「新增連結」時，預設掛在那家店底下。
   const values = link ?? { title: '', label: '', url: '', category: '', description: '', tags: '', note: '', status: 'active', pinned: false, store_id: state.linkStore };
   const f = linkForm.elements;
-  for (const key of ['title', 'label', 'url', 'category', 'description', 'tags', 'note', 'status']) f[key].value = values[key];
+  for (const key of ['title', 'label', 'url', 'description', 'tags', 'note', 'status']) f[key].value = values[key];
   f.pinned.checked = values.pinned;
   f.store_id.replaceChildren(h('option', { value: '' }, '（不屬於任何店家）'), ...state.stores.map((store) => h('option', { value: String(store.id) }, store.name)));
   f.store_id.value = values.store_id == null ? '' : String(values.store_id);
-  $('#link-categories').replaceChildren(...[...new Set(state.links.map((item) => item.category).filter(Boolean))].map((name) => h('option', { value: name })));
+  const categories = [...new Set(state.links.map((item) => item.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  if (values.category && !categories.includes(values.category)) categories.push(values.category);
+  f.category.replaceChildren(h('option', { value: '' }, '未分類'), ...categories.map((name) => h('option', { value: name }, name)), h('option', { value: '__new__' }, '新增分類…'));
+  f.category.value = values.category || '';
+  $('#l-category-new').value = '';
+  $('#l-category-new').hidden = true;
   $('#link-delete-btn').hidden = !link;
   showLinkErrors();
   linkDialog.showModal();
@@ -359,12 +336,19 @@ function openLinkDialog(link) {
 
 function readLinkForm() {
   const f = linkForm.elements;
+  const category = f.category.value === '__new__' ? $('#l-category-new').value.trim() : f.category.value;
   return {
-    title: f.title.value.trim(), label: f.label.value.trim(), url: f.url.value.trim(), category: f.category.value.trim(),
+    title: f.title.value.trim(), label: f.label.value.trim(), url: f.url.value.trim(), category,
     description: f.description.value.trim(), tags: f.tags.value.trim(), note: f.note.value.trim(), status: f.status.value,
     pinned: f.pinned.checked, store_id: f.store_id.value === '' ? null : Number(f.store_id.value),
   };
 }
+
+$('#l-category').addEventListener('change', (event) => {
+  const input = $('#l-category-new');
+  input.hidden = event.target.value !== '__new__';
+  if (!input.hidden) input.focus();
+});
 
 linkForm.addEventListener('submit', async (event) => {
   event.preventDefault();
