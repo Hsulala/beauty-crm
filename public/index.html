@@ -94,10 +94,12 @@
             <button type="button" id="icon-upload-btn" class="btn quiet">上傳圖片</button>
             <button type="button" id="icon-fetch-btn" class="btn quiet">從店家網站抓取</button>
             <button type="button" id="icon-remove-btn" class="btn quiet">移除</button>
+            <button type="button" id="icon-sync-btn" class="btn quiet">立即同步</button>
           </div>
         </div>
         <input type="file" id="icon-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
-        <p class="hint">建議用正方形圖片，會自動縮成 128×128。Logo 會立即儲存，不需按下方的儲存。</p>
+        <p class="hint">建議用正方形圖片，會自動縮成 128×128。Logo 會先儲存在 CRM，再同步到顧客頁；只有下方顯示「已同步」才代表顧客頁已套用。</p>
+        <p class="hint" id="icon-sync-status" role="status"></p>
         <p class="field-error" id="icon-error" hidden></p>
       </div>
 

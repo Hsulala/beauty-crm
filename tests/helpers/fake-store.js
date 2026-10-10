@@ -1,5 +1,6 @@
 // 測試用：模擬一家店的 /api/remote/*（驗證 Bearer 金鑰、記錄收到的請求）。
 import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
 
 export const READ_KEY = 'r'.repeat(40);
 export const WRITE_KEY = 'w'.repeat(40);
@@ -8,15 +9,17 @@ export async function startFakeStore({ system = 'heyu' } = {}) {
   const state = {
     modules: { schedule: { label: '老師排班', enabled: false }, stats: { label: '營收數據', enabled: true } },
     requests: [],
+    logo: null,
     mode: 'ok', // ok | down | redirect | hang
   };
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://x');
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
-    const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : undefined;
+    const raw = Buffer.concat(chunks);
+    const body = chunks.length && request.headers['content-type'] === 'application/json' ? JSON.parse(raw.toString('utf8')) : undefined;
     const token = /^Bearer (\S+)$/.exec(request.headers.authorization ?? '')?.[1];
-    state.requests.push({ method: request.method, path: url.pathname + url.search, token, body });
+    state.requests.push({ method: request.method, path: url.pathname + url.search, token, body, bytes: raw.length });
     const send = (status, value, headers = {}) => { response.writeHead(status, { 'content-type': 'application/json', ...headers }); response.end(JSON.stringify(value)); };
     if (state.mode === 'redirect') return send(302, {}, { location: 'https://elsewhere.example/steal' });
     if (state.mode === 'down') return send(500, { error: '內部錯誤' });
@@ -24,6 +27,12 @@ export async function startFakeStore({ system = 'heyu' } = {}) {
     if (!role) return send(401, { error: '金鑰不正確' });
     if (request.method === 'GET' && url.pathname === '/api/remote/stats') return send(200, { system, month: url.searchParams.get('month'), bookings: { total: 7, cancelled: 1 } });
     if (request.method === 'GET' && url.pathname === '/api/remote/config') return send(200, { system, modules: state.modules });
+    if (request.method === 'GET' && url.pathname === '/api/remote/logo') return send(200, { has_logo: Boolean(state.logo), sha256: state.logo ? createHash('sha256').update(state.logo).digest('hex') : null });
+    if (url.pathname === '/api/remote/logo' && (request.method === 'PUT' || request.method === 'DELETE')) {
+      if (role !== 'write') return send(403, { error: '這把金鑰只能讀取，不能修改設定' });
+      state.logo = request.method === 'PUT' ? raw : null;
+      return send(200, { ok: true, has_logo: Boolean(state.logo), sha256: state.logo ? createHash('sha256').update(state.logo).digest('hex') : null });
+    }
     if (request.method === 'PUT' && url.pathname === '/api/remote/config') {
       if (role !== 'write') return send(403, { error: '這把金鑰只能讀取，不能修改設定' });
       let changed = false;

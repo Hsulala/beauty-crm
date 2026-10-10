@@ -451,7 +451,7 @@ function showErrors(fields = {}, general = '') {
   box.hidden = !box.textContent;
 }
 
-// 店家小圖示：有上傳就顯示圖片，沒有就用店名第一個字
+// 顧客頁 Logo：只在店家編輯畫面預覽，不顯示回店家總覽卡片。
 function iconNode(store, large = false) {
   const cls = `store-icon${large ? ' is-lg' : ''}`;
   if (store?.icon_v) return h('span', { class: cls }, h('img', { src: `/api/stores/${store.id}/icon?v=${store.icon_v}`, alt: '' }));
@@ -463,6 +463,21 @@ function renderIconField() {
   $('#icon-preview').replaceWith(Object.assign(iconNode(editing, true), { id: 'icon-preview' }));
   $('#icon-remove-btn').disabled = !editing.icon_v;
   $('#icon-fetch-btn').disabled = !editing.url;
+  $('#icon-sync-btn').disabled = false;
+  const status = $('#icon-sync-status');
+  if (editing.icon_sync_state === 'synced') {
+    status.textContent = editing.icon_v ? '已同步到顧客頁。' : '已同步，顧客頁已恢復預設圖示。';
+    status.className = 'ok-note';
+  } else if (editing.icon_sync_state === 'pending') {
+    status.textContent = '等待同步到顧客頁。';
+    status.className = 'hint';
+  } else if (editing.icon_sync_state === 'error') {
+    status.textContent = `尚未套用到顧客頁：${editing.icon_sync_error || '同步失敗，請重試'}`;
+    status.className = 'field-error';
+  } else {
+    status.textContent = editing.icon_v ? '尚未同步到顧客頁，請按「立即同步」。' : '顧客頁目前使用預設圖示。';
+    status.className = 'hint';
+  }
   showMessage('#icon-error', '');
 }
 async function afterIconChange() {
@@ -508,10 +523,20 @@ $('#icon-fetch-btn').addEventListener('click', async () => {
   await afterIconChange();
 });
 $('#icon-remove-btn').addEventListener('click', async () => {
-  if (!editing || !confirm('移除這家店的小圖示？')) return;
+  if (!editing || !confirm('移除這家店的顧客頁面 Logo，並讓顧客頁恢復預設圖示？')) return;
   const result = await api(`/api/stores/${editing.id}/icon`, { method: 'DELETE' });
   if (!result.ok) { showMessage('#icon-error', errorText(result)); return; }
   await afterIconChange();
+});
+$('#icon-sync-btn').addEventListener('click', async () => {
+  if (!editing) return;
+  const button = $('#icon-sync-btn');
+  button.disabled = true;
+  showMessage('#icon-error', '');
+  $('#icon-sync-status').textContent = '同步中…';
+  const result = await api(`/api/stores/${editing.id}/icon/sync`, { method: 'POST' });
+  await afterIconChange();
+  if (!result.ok || !result.data.sync?.ok) showMessage('#icon-error', result.data.sync?.error ?? errorText(result));
 });
 
 function openDialog(store) {

@@ -1,4 +1,5 @@
 import express from 'express';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { COOKIE_NAME, SESSION_MS, createLoginLimiter, issueSession, passwordMatches, readCookie, verifySession } from './auth.js';
 import { contractInfo, taipeiToday } from './contract.js';
@@ -86,7 +87,11 @@ export function createApp({ db, config }) {
 
   app.get('/api/stores', async (request, response) => {
     const { rows } = await db.query(`SELECT ${STORE_COLUMNS},
-      (SELECT (extract(epoch FROM i.updated_at) * 1000)::bigint FROM store_icon i WHERE i.store_id = stores.id) AS icon_v
+      (SELECT (extract(epoch FROM i.updated_at) * 1000)::bigint FROM store_icon i WHERE i.store_id = stores.id) AS icon_v,
+      (SELECT state FROM store_icon_sync s WHERE s.store_id = stores.id) AS icon_sync_state,
+      (SELECT error FROM store_icon_sync s WHERE s.store_id = stores.id) AS icon_sync_error,
+      (SELECT attempted_at FROM store_icon_sync s WHERE s.store_id = stores.id) AS icon_sync_attempted_at,
+      (SELECT synced_at FROM store_icon_sync s WHERE s.store_id = stores.id) AS icon_synced_at
       FROM stores ORDER BY ${STATUS_ORDER}, lower(name)`);
     const today = taipeiToday(now());
     response.json({ today, stores: rows.map(({ icon_v: iconV, ...row }) => ({ ...present(row, today), icon_v: iconV == null ? null : String(iconV) })) });
@@ -483,24 +488,76 @@ export function createApp({ db, config }) {
     response.json({ ok: true, changed: Object.keys(changes).length > 0, modules: after.modules });
   });
 
-  // ---- 店家小圖示（PNG，存在 store_icon；圖片不進異動紀錄，只記動作）----
+  // ---- 顧客頁 Logo（PNG 存在 CRM，並透過寫入金鑰同步到店家系統）----
   const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const ICON_MAX = 200 * 1024;
   const isPng = (buf) => Buffer.isBuffer(buf) && buf.length > 8 && buf.length <= ICON_MAX && buf.subarray(0, 8).equals(PNG_MAGIC);
+  const logoHash = (data) => (data ? createHash('sha256').update(data).digest('hex') : null);
   async function iconStore(request, response) {
     const id = parseId(request.params.id);
-    const store = id === null ? null : (await db.query('SELECT id, name, url FROM stores WHERE id = $1', [id])).rows[0];
+    const store = id === null ? null : (await db.query('SELECT id, name, url, system_type FROM stores WHERE id = $1', [id])).rows[0];
     if (!store) fail(response, 404, '找不到這家店');
     return store;
+  }
+  async function setSyncState(storeId, values) {
+    await db.query(
+      `INSERT INTO store_icon_sync (store_id, state, desired_hash, remote_hash, error, attempted_at, synced_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+       ON CONFLICT (store_id) DO UPDATE SET state = EXCLUDED.state, desired_hash = EXCLUDED.desired_hash,
+         remote_hash = EXCLUDED.remote_hash, error = EXCLUDED.error, attempted_at = EXCLUDED.attempted_at,
+         synced_at = EXCLUDED.synced_at, updated_at = now()`,
+      [storeId, values.state, values.desiredHash ?? null, values.remoteHash ?? null, values.error ?? '', values.attemptedAt ?? null, values.syncedAt ?? null],
+    );
+  }
+  async function syncLogo(store, data) {
+    const desiredHash = logoHash(data);
+    const attemptedAt = now();
+    const reject = async (message) => {
+      await setSyncState(store.id, { state: 'error', desiredHash, error: message, attemptedAt });
+      return { ok: false, state: 'error', error: message, attempted_at: attemptedAt.toISOString() };
+    };
+    if (!secret) return reject('CRM 尚未設定 REMOTE_KEY_SECRET，Logo 只存進 CRM，尚未套用到顧客頁');
+    if (!(await remoteSupported(store.system_type))) return reject('這個系統類型尚未支援 Logo 同步，Logo 只存進 CRM');
+    if (!store.url) return reject('店家尚未設定網址，Logo 只存進 CRM');
+    const row = (await db.query('SELECT write_key_enc FROM store_remote WHERE store_id = $1', [store.id])).rows[0];
+    if (!row?.write_key_enc) return reject('尚未設定寫入金鑰，Logo 只存進 CRM，尚未套用到顧客頁');
+    let writeKey;
+    try { writeKey = open(row.write_key_enc, secret); }
+    catch { return reject('無法讀取已儲存的寫入金鑰，請重新儲存金鑰後再同步'); }
+    await setSyncState(store.id, { state: 'pending', desiredHash, attemptedAt });
+    try {
+      const result = await callStore({
+        url: store.url,
+        key: writeKey,
+        path: '/api/remote/logo',
+        method: data ? 'PUT' : 'DELETE',
+        rawBody: data ?? undefined,
+        contentType: data ? 'image/png' : undefined,
+      });
+      const remoteHash = result.sha256 ?? null;
+      if (data && (result.has_logo !== true || remoteHash !== desiredHash)) throw new RemoteError('店家系統沒有確認收到相同的 Logo');
+      if (!data && result.has_logo !== false) throw new RemoteError('店家系統沒有確認移除 Logo');
+      const syncedAt = now();
+      await setSyncState(store.id, { state: 'synced', desiredHash, remoteHash, attemptedAt, syncedAt });
+      return { ok: true, state: 'synced', has_logo: Boolean(data), sha256: remoteHash, attempted_at: attemptedAt.toISOString(), synced_at: syncedAt.toISOString() };
+    } catch (error) {
+      return reject(error instanceof RemoteError ? error.message : 'Logo 同步失敗，請稍後再試');
+    }
   }
   async function saveIcon(store, data, how) {
     await db.tx(async (tx) => {
       await tx.query(
         `INSERT INTO store_icon (store_id, data, updated_at) VALUES ($1, $2, now())
          ON CONFLICT (store_id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`, [store.id, data]);
+      await tx.query(
+        `INSERT INTO store_icon_sync (store_id, state, desired_hash, remote_hash, error, updated_at)
+         VALUES ($1, 'pending', $2, NULL, '', now())
+         ON CONFLICT (store_id) DO UPDATE SET state = 'pending', desired_hash = EXCLUDED.desired_hash,
+           remote_hash = NULL, error = '', updated_at = now()`, [store.id, logoHash(data)]);
       await tx.query('INSERT INTO audit_log (action, store_id, store_name, detail) VALUES ($1, $2, $3, $4::jsonb)',
         ['store.icon', store.id, store.name, JSON.stringify({ how, bytes: data.length })]);
     });
+    return syncLogo(store, data);
   }
 
   app.get('/api/stores/:id/icon', async (request, response) => {
@@ -516,8 +573,8 @@ export function createApp({ db, config }) {
   app.put('/api/stores/:id/icon', express.raw({ type: 'image/png', limit: ICON_MAX }), async (request, response) => {
     const store = await iconStore(request, response); if (!store) return;
     if (!isPng(request.body)) return fail(response, 400, '請上傳 PNG 圖片（200KB 以內）');
-    await saveIcon(store, request.body, 'upload');
-    response.json({ ok: true });
+    const sync = await saveIcon(store, request.body, 'upload');
+    response.json({ ok: true, sync });
   });
 
   // 從店家網站抓 /apple-touch-icon.png（只抓 PNG，不跟隨轉址，https 限定）
@@ -532,19 +589,32 @@ export function createApp({ db, config }) {
       buf = Buffer.from(await res.arrayBuffer());
     } catch { return fail(response, 502, '連不上店家網站，請確認網址或改用上傳'); }
     if (!isPng(buf)) return fail(response, 400, '店家網站的圖示不是 PNG 或太大，請改用上傳');
-    await saveIcon(store, buf, 'fetch');
-    response.json({ ok: true });
+    const sync = await saveIcon(store, buf, 'fetch');
+    response.json({ ok: true, sync });
+  });
+
+  app.post('/api/stores/:id/icon/sync', async (request, response) => {
+    const store = await iconStore(request, response); if (!store) return;
+    const row = (await db.query('SELECT data FROM store_icon WHERE store_id = $1', [store.id])).rows[0];
+    const sync = await syncLogo(store, row ? Buffer.from(row.data) : null);
+    response.json({ ok: sync.ok, sync });
   });
 
   app.delete('/api/stores/:id/icon', async (request, response) => {
     const store = await iconStore(request, response); if (!store) return;
     const removed = await db.tx(async (tx) => {
       const { rows } = await tx.query('DELETE FROM store_icon WHERE store_id = $1 RETURNING store_id', [store.id]);
+      await tx.query(
+        `INSERT INTO store_icon_sync (store_id, state, desired_hash, remote_hash, error, updated_at)
+         VALUES ($1, 'pending', NULL, NULL, '', now())
+         ON CONFLICT (store_id) DO UPDATE SET state = 'pending', desired_hash = NULL,
+           remote_hash = NULL, error = '', updated_at = now()`, [store.id]);
       if (rows.length) await tx.query('INSERT INTO audit_log (action, store_id, store_name, detail) VALUES ($1, $2, $3, $4::jsonb)',
         ['store.icon', store.id, store.name, JSON.stringify({ how: 'remove' })]);
       return rows.length > 0;
     });
-    response.json({ ok: true, removed });
+    const sync = await syncLogo(store, null);
+    response.json({ ok: true, removed, sync });
   });
 
   // ---- 總覽數字 ----

@@ -14,16 +14,18 @@ export function remoteUrl(storeUrl, path) {
   return new URL(path, base.origin).toString();
 }
 
-export async function callStore({ url, key, path, method = 'GET', body, timeoutMs = 8000, fetchImpl = fetch }) {
+export async function callStore({ url, key, path, method = 'GET', body, rawBody, contentType, timeoutMs = 8000, fetchImpl = fetch }) {
   const target = remoteUrl(url, path);
+  if (body !== undefined && rawBody !== undefined) throw new RemoteError('遠端請求格式不正確', 500);
+  const payload = rawBody === undefined ? (body === undefined ? undefined : JSON.stringify(body)) : rawBody;
   let response;
   try {
     response = await fetchImpl(target, {
       method,
       redirect: 'manual',
       signal: AbortSignal.timeout(timeoutMs),
-      headers: { authorization: `Bearer ${key}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: { authorization: `Bearer ${key}`, ...(payload === undefined ? {} : { 'content-type': contentType ?? (rawBody === undefined ? 'application/json' : 'application/octet-stream') }) },
+      body: payload,
     });
   } catch (error) {
     throw new RemoteError(error?.name === 'TimeoutError' ? '店家系統回應逾時，請稍後再試' : '連不上店家系統，請確認網址與服務是否運作中');

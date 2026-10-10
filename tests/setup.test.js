@@ -10,10 +10,10 @@ import { MIGRATIONS, startApp } from './helpers/app.js';
 test('migration：第二次執行不會重跑，資料表都建好了', async () => {
   const db = await createPgliteDb();
   try {
-    assert.deepEqual(await migrate(db, MIGRATIONS), ['001_init.sql', '002_store_remote.sql', '003_store_icon.sql', '004_system_types.sql', '005_links.sql']);
+    assert.deepEqual(await migrate(db, MIGRATIONS), ['001_init.sql', '002_store_remote.sql', '003_store_icon.sql', '004_system_types.sql', '005_links.sql', '006_store_icon_sync.sql']);
     assert.deepEqual(await migrate(db, MIGRATIONS), []);
     const tables = (await db.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")).rows.map((r) => r.table_name);
-    for (const name of ['stores', 'audit_log', 'schema_migrations', 'store_remote', 'store_icon', 'system_types', 'links']) assert.ok(tables.includes(name), name);
+    for (const name of ['stores', 'audit_log', 'schema_migrations', 'store_remote', 'store_icon', 'store_icon_sync', 'system_types', 'links']) assert.ok(tables.includes(name), name);
   } finally { await db.close(); }
 });
 
@@ -84,6 +84,10 @@ test('頁面守門：沒有行內程式、沒有表情符號，且 HTML 用到�
   assert.ok(html.includes('id="link-category-filters"'));
   assert.equal(js.includes("else if (!query && link.store_id != null) return false"), false, '常用工具不可預設隱藏店家連結');
   assert.equal(js.includes("onclick: () => showStoreLinks(store)"), false, '店家卡片不應再放連結管理按鈕');
+  assert.ok(html.includes('id="icon-sync-status"'));
+  assert.ok(html.includes('id="icon-sync-btn"'));
+  assert.match(html, /只有下方顯示「已同步」才代表顧客頁已套用/);
+  assert.equal(js.includes('store-icon${large ?'), true, 'Logo 預覽應只由編輯欄位使用');
 });
 
 test('專案檔案齊全：env 範例、部署設定、交接文件', () => {
