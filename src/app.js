@@ -4,7 +4,7 @@ import { COOKIE_NAME, SESSION_MS, createLoginLimiter, issueSession, passwordMatc
 import { contractInfo, taipeiToday } from './contract.js';
 import { FIELD_NAMES, TYPE_FIELD_NAMES, checkContractOrder, parseStore, parseType } from './validate.js';
 import { LINK_FIELD_NAMES, normalizeImport, parseLink } from './links.js';
-import { RemoteError, callStore } from './remote.js';
+import { RemoteError, callStore, remoteUrl } from './remote.js';
 import { open, seal } from './secretbox.js';
 
 const STORE_COLUMNS = `id, name, system_type, url, status, monthly_fee,
@@ -85,9 +85,11 @@ export function createApp({ db, config }) {
   const NO_TYPE = '沒有這個系統類型';
 
   app.get('/api/stores', async (request, response) => {
-    const { rows } = await db.query(`SELECT ${STORE_COLUMNS} FROM stores ORDER BY ${STATUS_ORDER}, lower(name)`);
+    const { rows } = await db.query(`SELECT ${STORE_COLUMNS},
+      (SELECT (extract(epoch FROM i.updated_at) * 1000)::bigint FROM store_icon i WHERE i.store_id = stores.id) AS icon_v
+      FROM stores ORDER BY ${STATUS_ORDER}, lower(name)`);
     const today = taipeiToday(now());
-    response.json({ today, stores: rows.map((row) => present(row, today)) });
+    response.json({ today, stores: rows.map(({ icon_v: iconV, ...row }) => ({ ...present(row, today), icon_v: iconV == null ? null : String(iconV) })) });
   });
 
   app.post('/api/stores', async (request, response) => {
@@ -479,6 +481,70 @@ export function createApp({ db, config }) {
       );
     }
     response.json({ ok: true, changed: Object.keys(changes).length > 0, modules: after.modules });
+  });
+
+  // ---- 店家小圖示（PNG，存在 store_icon；圖片不進異動紀錄，只記動作）----
+  const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const ICON_MAX = 200 * 1024;
+  const isPng = (buf) => Buffer.isBuffer(buf) && buf.length > 8 && buf.length <= ICON_MAX && buf.subarray(0, 8).equals(PNG_MAGIC);
+  async function iconStore(request, response) {
+    const id = parseId(request.params.id);
+    const store = id === null ? null : (await db.query('SELECT id, name, url FROM stores WHERE id = $1', [id])).rows[0];
+    if (!store) fail(response, 404, '找不到這家店');
+    return store;
+  }
+  async function saveIcon(store, data, how) {
+    await db.tx(async (tx) => {
+      await tx.query(
+        `INSERT INTO store_icon (store_id, data, updated_at) VALUES ($1, $2, now())
+         ON CONFLICT (store_id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`, [store.id, data]);
+      await tx.query('INSERT INTO audit_log (action, store_id, store_name, detail) VALUES ($1, $2, $3, $4::jsonb)',
+        ['store.icon', store.id, store.name, JSON.stringify({ how, bytes: data.length })]);
+    });
+  }
+
+  app.get('/api/stores/:id/icon', async (request, response) => {
+    const id = parseId(request.params.id);
+    const row = id === null ? null : (await db.query('SELECT data FROM store_icon WHERE store_id = $1', [id])).rows[0];
+    if (!row) return fail(response, 404, '這家店沒有小圖示');
+    response.setHeader('Content-Type', 'image/png');
+    response.setHeader('Cache-Control', 'private, max-age=31536000, immutable'); // 網址帶 ?v= 版本，換圖就換網址
+    response.send(Buffer.from(row.data));
+  });
+
+  // 上傳：前端先縮成 128×128 PNG，再以 image/png 原始資料送出
+  app.put('/api/stores/:id/icon', express.raw({ type: 'image/png', limit: ICON_MAX }), async (request, response) => {
+    const store = await iconStore(request, response); if (!store) return;
+    if (!isPng(request.body)) return fail(response, 400, '請上傳 PNG 圖片（200KB 以內）');
+    await saveIcon(store, request.body, 'upload');
+    response.json({ ok: true });
+  });
+
+  // 從店家網站抓 /apple-touch-icon.png（只抓 PNG，不跟隨轉址，https 限定）
+  app.post('/api/stores/:id/icon/fetch', async (request, response) => {
+    const store = await iconStore(request, response); if (!store) return;
+    let target;
+    try { target = remoteUrl(store.url, '/apple-touch-icon.png'); } catch (error) { return fail(response, 400, error.message === '這家店還沒填網址' ? error.message : '店家網址必須是 https 才能抓取圖示'); }
+    let buf;
+    try {
+      const res = await (config.fetchImpl ?? fetch)(target, { redirect: 'manual', signal: AbortSignal.timeout(8000) });
+      if (!res.ok) return fail(response, 404, '店家網站沒有提供小圖示，請改用上傳');
+      buf = Buffer.from(await res.arrayBuffer());
+    } catch { return fail(response, 502, '連不上店家網站，請確認網址或改用上傳'); }
+    if (!isPng(buf)) return fail(response, 400, '店家網站的圖示不是 PNG 或太大，請改用上傳');
+    await saveIcon(store, buf, 'fetch');
+    response.json({ ok: true });
+  });
+
+  app.delete('/api/stores/:id/icon', async (request, response) => {
+    const store = await iconStore(request, response); if (!store) return;
+    const removed = await db.tx(async (tx) => {
+      const { rows } = await tx.query('DELETE FROM store_icon WHERE store_id = $1 RETURNING store_id', [store.id]);
+      if (rows.length) await tx.query('INSERT INTO audit_log (action, store_id, store_name, detail) VALUES ($1, $2, $3, $4::jsonb)',
+        ['store.icon', store.id, store.name, JSON.stringify({ how: 'remove' })]);
+      return rows.length > 0;
+    });
+    response.json({ ok: true, removed });
   });
 
   // ---- 總覽數字 ----
