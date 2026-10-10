@@ -14,25 +14,38 @@
   <header class="top">
     <div><p class="kicker">Store Hub</p><h1>HUB<span class="dot">.</span><span class="zh">店家總覽</span></h1></div>
     <div class="top-actions">
+      <button type="button" id="add-type-btn" class="btn" hidden>新增類型</button>
       <button type="button" id="add-btn" class="btn primary">新增店家</button>
       <button type="button" id="logout-btn" class="btn quiet">登出</button>
     </div>
   </header>
 
   <main>
-    <section id="summary" class="summary" aria-live="polite" aria-label="總覽數字"></section>
+    <nav class="tabs" role="group" aria-label="切換檢視">
+      <button type="button" class="tab is-active" data-view="stores">店家</button>
+      <button type="button" class="tab" data-view="types">系統類型</button>
+    </nav>
 
-    <section id="attention" class="attention" hidden></section>
+    <div id="view-stores">
+      <section id="summary" class="summary" aria-live="polite" aria-label="總覽數字"></section>
 
-    <div class="filters" role="group" aria-label="依狀態篩選">
-      <button type="button" class="filter is-active" data-filter="all">全部</button>
-      <button type="button" class="filter" data-filter="running">運作中</button>
-      <button type="button" class="filter" data-filter="building">建置中</button>
-      <button type="button" class="filter" data-filter="paused">暫停</button>
-      <button type="button" class="filter" data-filter="ended">已結束</button>
+      <section id="attention" class="attention" hidden></section>
+
+      <div class="filters" role="group" aria-label="依狀態篩選">
+        <button type="button" class="filter is-active" data-filter="all">全部</button>
+        <button type="button" class="filter" data-filter="running">運作中</button>
+        <button type="button" class="filter" data-filter="building">建置中</button>
+        <button type="button" class="filter" data-filter="paused">暫停</button>
+        <button type="button" class="filter" data-filter="ended">已結束</button>
+      </div>
+
+      <section id="list" class="store-list" aria-label="店家清單"></section>
     </div>
 
-    <section id="list" class="store-list" aria-label="店家清單"></section>
+    <div id="view-types" hidden>
+      <p class="hint types-intro">系統類型是可重複使用的範本。新店家選一個類型，就能直接用該類型已有的功能；不同類型的功能模組各自獨立。</p>
+      <section id="type-list" class="type-list" aria-label="系統類型清單"></section>
+    </div>
 
     <details class="audit">
       <summary>異動紀錄</summary>
@@ -53,12 +66,8 @@
       <div class="field-row">
         <div class="field">
           <label for="f-system_type">系統</label>
-          <select id="f-system_type" name="system_type">
-            <option value="heyu">禾域 HEYU（按摩）</option>
-            <option value="skin">妍序 Skin（皮膚管理）</option>
-            <option value="order">訂購型（戀鳳爪、麻辣醬等）</option>
-            <option value="other">其他</option>
-          </select>
+          <select id="f-system_type" name="system_type"></select>
+          <p class="field-error" data-error="system_type" hidden></p>
         </div>
         <div class="field">
           <label for="f-status">狀態</label>
@@ -108,6 +117,58 @@
         <button type="button" id="delete-btn" class="btn danger" hidden>刪除店家</button>
         <span class="spacer"></span>
         <button type="button" id="cancel-btn" class="btn quiet">取消</button>
+        <button type="submit" class="btn primary">儲存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="type-dialog" aria-labelledby="type-dialog-title">
+    <form id="type-form" novalidate>
+      <h2 id="type-dialog-title">新增系統類型</h2>
+
+      <div class="field">
+        <label for="t-label">名稱</label>
+        <input id="t-label" name="label" type="text" maxlength="30" placeholder="例如：預約型" required>
+        <p class="field-error" data-error="label" hidden></p>
+      </div>
+
+      <div class="field">
+        <label for="t-key">代碼</label>
+        <input id="t-key" name="key" type="text" maxlength="30" placeholder="例如：booking" autocomplete="off" required>
+        <p class="hint">英文小寫、數字、底線，以英文字母開頭。建立後不能修改。</p>
+        <p class="field-error" data-error="key" hidden></p>
+      </div>
+
+      <div class="field">
+        <label for="t-description">說明</label>
+        <textarea id="t-description" name="description" rows="3" maxlength="500" placeholder="這個類型適合哪種店、有什麼功能"></textarea>
+        <p class="field-error" data-error="description" hidden></p>
+      </div>
+
+      <div class="field">
+        <label for="t-repo">程式 repo</label>
+        <input id="t-repo" name="repo" type="text" maxlength="300" placeholder="例如：Hsulala/heyu-booking">
+        <p class="hint">這個類型用的程式在哪裡，可寫多個。</p>
+        <p class="field-error" data-error="repo" hidden></p>
+      </div>
+
+      <label class="check-row">
+        <input id="t-remote_supported" name="remote_supported" type="checkbox">
+        <span>店家系統已提供遠端管理介面（總管可看數字、開關模組）</span>
+      </label>
+
+      <div class="field">
+        <label for="t-sort_order">排序（小的在前）</label>
+        <input id="t-sort_order" name="sort_order" type="number" min="0" max="1000" step="1" value="50">
+        <p class="field-error" data-error="sort_order" hidden></p>
+      </div>
+
+      <p class="field-error" id="type-form-error" role="alert" hidden></p>
+
+      <div class="dialog-actions">
+        <button type="button" id="type-delete-btn" class="btn danger" hidden>刪除類型</button>
+        <span class="spacer"></span>
+        <button type="button" id="type-cancel-btn" class="btn quiet">取消</button>
         <button type="submit" class="btn primary">儲存</button>
       </div>
     </form>

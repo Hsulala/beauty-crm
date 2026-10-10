@@ -2,7 +2,7 @@ import express from 'express';
 import { join } from 'node:path';
 import { COOKIE_NAME, SESSION_MS, createLoginLimiter, issueSession, passwordMatches, readCookie, verifySession } from './auth.js';
 import { contractInfo, taipeiToday } from './contract.js';
-import { FIELD_NAMES, checkContractOrder, parseStore } from './validate.js';
+import { FIELD_NAMES, TYPE_FIELD_NAMES, checkContractOrder, parseStore, parseType } from './validate.js';
 import { RemoteError, callStore } from './remote.js';
 import { open, seal } from './secretbox.js';
 
@@ -78,6 +78,8 @@ export function createApp({ db, config }) {
   // ---- 店家 ----
   const present = (row, today) => ({ ...row, contract: contractInfo(row, today) });
   const parseId = (text) => (/^\d{1,9}$/.test(text) ? Number(text) : null);
+  const typeExists = async (key) => (await db.query('SELECT 1 FROM system_types WHERE key = $1', [key])).rows.length > 0;
+  const NO_TYPE = '沒有這個系統類型';
 
   app.get('/api/stores', async (request, response) => {
     const { rows } = await db.query(`SELECT ${STORE_COLUMNS} FROM stores ORDER BY ${STATUS_ORDER}, lower(name)`);
@@ -89,6 +91,7 @@ export function createApp({ db, config }) {
     const { value, errors } = parseStore(request.body, { partial: false });
     const order = checkContractOrder(value);
     if (order) Object.assign(errors, order);
+    if (!errors.system_type && !(await typeExists(value.system_type))) errors.system_type = NO_TYPE;
     if (Object.keys(errors).length) return fail(response, 400, '資料有誤', errors);
     try {
       const store = await db.tx(async (tx) => {
@@ -109,6 +112,7 @@ export function createApp({ db, config }) {
       response.status(201).json(present(store, taipeiToday(now())));
     } catch (error) {
       if (error?.code === '23505') return fail(response, 409, '已有同名店家', { name: '已有同名店家' });
+      if (error?.code === '23503') return fail(response, 400, '資料有誤', { system_type: NO_TYPE });
       throw error;
     }
   });
@@ -117,6 +121,7 @@ export function createApp({ db, config }) {
     const id = parseId(request.params.id);
     if (id === null) return fail(response, 404, '找不到這家店');
     const { value, errors } = parseStore(request.body, { partial: true });
+    if (value.system_type !== undefined && !(await typeExists(value.system_type))) errors.system_type = NO_TYPE;
     if (Object.keys(errors).length) return fail(response, 400, '資料有誤', errors);
     try {
       const result = await db.tx(async (tx) => {
@@ -149,6 +154,7 @@ export function createApp({ db, config }) {
       response.json(present(result.store, taipeiToday(now())));
     } catch (error) {
       if (error?.code === '23505') return fail(response, 409, '已有同名店家', { name: '已有同名店家' });
+      if (error?.code === '23503') return fail(response, 400, '資料有誤', { system_type: NO_TYPE });
       throw error;
     }
   });
@@ -169,10 +175,101 @@ export function createApp({ db, config }) {
     response.json({ ok: true });
   });
 
+  // ---- 系統類型（可重複使用的範本；店家掛在類型底下）----
+  const TYPE_COLUMNS = 'key, label, description, repo, remote_supported, sort_order';
+  const PROTECTED_TYPE = 'other';
+
+  app.get('/api/types', async (request, response) => {
+    const [types, stores] = await Promise.all([
+      db.query(`SELECT ${TYPE_COLUMNS} FROM system_types ORDER BY sort_order, key`),
+      db.query(`SELECT id, name, status, system_type FROM stores ORDER BY ${STATUS_ORDER}, lower(name)`),
+    ]);
+    response.json({
+      types: types.rows.map((type) => {
+        const members = stores.rows.filter((store) => store.system_type === type.key).map(({ id, name, status }) => ({ id, name, status }));
+        return { ...type, store_count: members.length, stores: members };
+      }),
+    });
+  });
+
+  app.post('/api/types', async (request, response) => {
+    const { value, errors } = parseType(request.body, { partial: false });
+    if (Object.keys(errors).length) return fail(response, 400, '資料有誤', errors);
+    const created = await db.tx(async (tx) => {
+      const dup = await tx.query('SELECT 1 FROM system_types WHERE key = $1 OR lower(label) = lower($2)', [value.key, value.label]);
+      if (dup.rows.length) return null;
+      const { rows } = await tx.query(
+        `INSERT INTO system_types (key, label, description, repo, remote_supported, sort_order)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${TYPE_COLUMNS}`,
+        [value.key, value.label, value.description, value.repo, value.remote_supported, value.sort_order],
+      );
+      await tx.query(
+        'INSERT INTO audit_log (action, store_name, detail) VALUES ($1, $2, $3::jsonb)',
+        ['type.create', rows[0].label, JSON.stringify({ key: rows[0].key, fields: value })],
+      );
+      return rows[0];
+    });
+    if (!created) return fail(response, 409, '已有相同代碼或名稱的系統類型', { key: '代碼或名稱已被使用' });
+    response.status(201).json({ ...created, store_count: 0, stores: [] });
+  });
+
+  app.patch('/api/types/:key', async (request, response) => {
+    const { value, errors } = parseType(request.body, { partial: true });
+    if (Object.keys(errors).length) return fail(response, 400, '資料有誤', errors);
+    const result = await db.tx(async (tx) => {
+      const current = (await tx.query(`SELECT ${TYPE_COLUMNS} FROM system_types WHERE key = $1 FOR UPDATE`, [request.params.key])).rows[0];
+      if (!current) return { status: 404 };
+      const changes = {};
+      for (const name of TYPE_FIELD_NAMES) if (Object.hasOwn(value, name) && value[name] !== current[name]) changes[name] = { from: current[name], to: value[name] };
+      if (!Object.keys(changes).length) return { status: 200, type: current };
+      if (changes.label) {
+        const dup = await tx.query('SELECT 1 FROM system_types WHERE lower(label) = lower($1) AND key <> $2', [value.label, current.key]);
+        if (dup.rows.length) return { status: 409, fields: { label: '已有同名的系統類型' } };
+      }
+      const names = Object.keys(changes);
+      const { rows } = await tx.query(
+        `UPDATE system_types SET ${names.map((name, index) => `${name} = $${index + 2}`).join(', ')}, updated_at = now() WHERE key = $1 RETURNING ${TYPE_COLUMNS}`,
+        [current.key, ...names.map((name) => changes[name].to)],
+      );
+      await tx.query(
+        'INSERT INTO audit_log (action, store_name, detail) VALUES ($1, $2, $3::jsonb)',
+        ['type.update', rows[0].label, JSON.stringify({ key: current.key, changes })],
+      );
+      return { status: 200, type: rows[0] };
+    });
+    if (result.status === 404) return fail(response, 404, '找不到這個系統類型');
+    if (result.status !== 200) return fail(response, result.status, '已有同名的系統類型', result.fields);
+    response.json(result.type);
+  });
+
+  app.delete('/api/types/:key', async (request, response) => {
+    if (request.params.key === PROTECTED_TYPE) return fail(response, 409, '「其他」是預設類型，不能刪除');
+    try {
+      const result = await db.tx(async (tx) => {
+        const current = (await tx.query(`SELECT ${TYPE_COLUMNS} FROM system_types WHERE key = $1 FOR UPDATE`, [request.params.key])).rows[0];
+        if (!current) return { status: 404 };
+        const used = (await tx.query('SELECT count(*)::int AS n FROM stores WHERE system_type = $1', [current.key])).rows[0].n;
+        if (used) return { status: 409, used };
+        await tx.query('DELETE FROM system_types WHERE key = $1', [current.key]);
+        await tx.query(
+          'INSERT INTO audit_log (action, store_name, detail) VALUES ($1, $2, $3::jsonb)',
+          ['type.delete', current.label, JSON.stringify({ snapshot: current })],
+        );
+        return { status: 200 };
+      });
+      if (result.status === 404) return fail(response, 404, '找不到這個系統類型');
+      if (result.status === 409) return fail(response, 409, `還有 ${result.used} 家店使用這個類型，請先把它們改到其他類型再刪除`);
+      response.json({ ok: true });
+    } catch (error) {
+      if (error?.code === '23503') return fail(response, 409, '還有店家使用這個類型，請先改到其他類型再刪除');
+      throw error;
+    }
+  });
+
   // ---- 遠端管理（呼叫各店系統的 /api/remote/*）----
   // 各店有兩把金鑰：讀取金鑰看數字與模組狀態、寫入金鑰才能改模組。金鑰加密存放，不會回傳到畫面。
   // 功能模組只能在這裡改，店家自己的後台改不了。
-  const REMOTE_SYSTEMS = ['heyu', 'skin', 'order'];
+  const remoteSupported = async (typeKey) => Boolean((await db.query('SELECT remote_supported FROM system_types WHERE key = $1', [typeKey])).rows[0]?.remote_supported);
   const validKey = (value) => typeof value === 'string' && value.length >= 32 && value.length <= 200 && !/\s/.test(value);
   const secret = config.remoteKeySecret ?? '';
 
@@ -184,12 +281,12 @@ export function createApp({ db, config }) {
     const keys = secret
       ? { read: row.read_key_enc ? open(row.read_key_enc, secret) : null, write: row.write_key_enc ? open(row.write_key_enc, secret) : null }
       : { read: null, write: null };
-    return { store, row, keys };
+    return { store, row, keys, supported: await remoteSupported(store.system_type) };
   }
 
-  function requireRemote(response, { store }) {
+  function requireRemote(response, { supported }) {
     if (!secret) { fail(response, 409, '尚未設定 REMOTE_KEY_SECRET，無法使用遠端管理（請在 Railway 設定這個變數）'); return false; }
-    if (!REMOTE_SYSTEMS.includes(store.system_type)) { fail(response, 400, '這個系統類型不支援遠端管理'); return false; }
+    if (!supported) { fail(response, 400, '這個系統類型不支援遠端管理'); return false; }
     return true;
   }
 
@@ -202,7 +299,7 @@ export function createApp({ db, config }) {
     if (!ctx) return;
     response.json({
       available: Boolean(secret),
-      supported: REMOTE_SYSTEMS.includes(ctx.store.system_type),
+      supported: ctx.supported,
       has_read_key: Boolean(ctx.row.read_key_enc),
       has_write_key: Boolean(ctx.row.write_key_enc),
     });

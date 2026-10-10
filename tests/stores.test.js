@@ -19,7 +19,7 @@ test('新增店家：只填店名也行，其餘用預設值', () => withApp(asy
 }));
 
 test('新增店家：完整資料原樣保存，日期不會因時區位移', () => withApp(async (app) => {
-  const body = { name: '禾域 HEYU', system_type: 'heyu', url: 'https://heyu.example', status: 'running', monthly_fee: 1000, contract_start: '2026-01-01', contract_end: '2026-12-31', notes: '第一行\n第二行' };
+  const body = { name: '禾域 HEYU', system_type: 'booking', url: 'https://heyu.example', status: 'running', monthly_fee: 1000, contract_start: '2026-01-01', contract_end: '2026-12-31', notes: '第一行\n第二行' };
   const created = await app.request('/api/stores', { method: 'POST', body });
   assert.equal(created.status, 201);
   const list = await app.request('/api/stores');
@@ -55,7 +55,7 @@ test('請求內容不是合法 JSON 時回 400，不會當機', () => withApp(as
 }));
 
 test('修改店家：只改有帶的欄位，其他設定維持原樣', () => withApp(async (app) => {
-  const created = (await app.request('/api/stores', { method: 'POST', body: { name: 'A 店', system_type: 'skin', url: 'https://a.example', status: 'running', monthly_fee: 1000, contract_start: '2026-01-01', contract_end: '2026-12-31', notes: '原本的備註' } })).json;
+  const created = (await app.request('/api/stores', { method: 'POST', body: { name: 'A 店', system_type: 'booking', url: 'https://a.example', status: 'running', monthly_fee: 1000, contract_start: '2026-01-01', contract_end: '2026-12-31', notes: '原本的備註' } })).json;
   const patched = await app.request(`/api/stores/${created.id}`, { method: 'PATCH', body: { monthly_fee: 1200 } });
   assert.equal(patched.status, 200);
   assert.equal(patched.json.monthly_fee, 1200);

@@ -1,5 +1,5 @@
 export const STATUSES = ['building', 'running', 'paused', 'ended'];
-export const SYSTEM_TYPES = ['heyu', 'skin', 'order', 'other'];
+export const TYPE_KEY = /^[a-z][a-z0-9_]{1,29}$/;
 
 const isDate = (value) => typeof value === 'string'
   && /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -17,7 +17,7 @@ const fields = {
   },
   system_type: {
     fallback: 'other',
-    parse: (raw) => (SYSTEM_TYPES.includes(raw) ? { value: raw } : { error: '系統類型不正確' }),
+    parse: (raw) => (typeof raw === 'string' && TYPE_KEY.test(raw) ? { value: raw } : { error: '系統類型不正確' }),
   },
   url: {
     fallback: '',
@@ -84,4 +84,53 @@ export function parseStore(input, { partial }) {
 // 合併後再檢查起訖日順序（修改時另一端可能來自資料庫原有的值）。
 export function checkContractOrder({ contract_start: start, contract_end: end }) {
   return start && end && end < start ? { contract_end: '合約到期日不能早於起日' } : null;
+}
+
+// ---- 系統類型 ----
+const text = (label, max, { required = false } = {}) => (raw) => {
+  const value = typeof raw === 'string' ? raw.trim() : null;
+  if (value === null) return { error: `${label}格式不正確` };
+  if (required && !value) return { error: `請填寫${label}` };
+  if (value.length > max) return { error: `${label}最多 ${max} 字` };
+  return { value };
+};
+
+const typeFields = {
+  key: {
+    required: true,
+    parse: (raw) => (typeof raw === 'string' && TYPE_KEY.test(raw) ? { value: raw } : { error: '代碼需為 2 到 30 個英文小寫、數字或底線，且以英文字母開頭' }),
+  },
+  label: { required: true, parse: text('名稱', 30, { required: true }) },
+  description: { fallback: '', parse: text('說明', 500) },
+  repo: { fallback: '', parse: text('程式 repo', 300) },
+  remote_supported: {
+    fallback: false,
+    parse: (raw) => (typeof raw === 'boolean' ? { value: raw } : { error: '遠端管理設定不正確' }),
+  },
+  sort_order: {
+    fallback: 50,
+    parse: (raw) => (Number.isInteger(raw) && raw >= 0 && raw <= 1000 ? { value: raw } : { error: '排序需為 0 到 1000 的整數' }),
+  },
+};
+
+export const TYPE_FIELD_NAMES = Object.keys(typeFields).filter((name) => name !== 'key');
+
+// partial = true（修改）時 key 不可帶、只處理有帶的欄位；false（新增）時補預設值。
+export function parseType(input, { partial }) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return { errors: { _: '資料格式不正確' }, value: {} };
+  const value = {}, errors = {};
+  for (const name of Object.keys(input)) if (!Object.hasOwn(typeFields, name)) errors[name] = '沒有這個欄位';
+  if (partial && Object.hasOwn(input, 'key')) errors.key = '代碼建立後不能修改';
+  for (const [name, spec] of Object.entries(typeFields)) {
+    if (partial && name === 'key') continue;
+    if (!Object.hasOwn(input, name)) {
+      if (partial) continue;
+      if (spec.required) { errors[name] = spec.parse(undefined).error; continue; }
+      value[name] = spec.fallback;
+      continue;
+    }
+    const result = spec.parse(input[name]);
+    if (result.error) errors[name] = result.error; else value[name] = result.value;
+  }
+  return { value, errors };
 }

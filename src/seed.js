@@ -2,7 +2,7 @@
 export const SEED_STORES = [
   {
     name: '禾域 HEYU',
-    system_type: 'heyu',
+    system_type: 'booking',
     url: 'https://heyu-booking-production-bcf9.up.railway.app',
     status: 'running',
     monthly_fee: 1000,
@@ -10,7 +10,7 @@ export const SEED_STORES = [
   },
   {
     name: '妍序 Skin',
-    system_type: 'skin',
+    system_type: 'booking',
     url: '',
     status: 'running',
     monthly_fee: 1000,

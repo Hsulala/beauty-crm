@@ -12,7 +12,7 @@ async function withRemote(fn, { overrides = { remoteKeySecret: SECRET }, system 
   const fake = await startFakeStore({ system });
   try {
     await app.login();
-    const store = (await app.request('/api/stores', { method: 'POST', body: { name: '測試店', system_type: system, url: fake.url } })).json;
+    const store = (await app.request('/api/stores', { method: 'POST', body: { name: '測試店', system_type: ['heyu', 'skin'].includes(system) ? 'booking' : system, url: fake.url } })).json;
     await fn({ app, fake, store, remote: (path, options) => app.request(`/api/stores/${store.id}/remote${path}`, options) });
   } finally { await fake.stop(); await app.stop(); }
 }

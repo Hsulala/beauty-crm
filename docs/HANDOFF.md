@@ -9,10 +9,12 @@
 - 登入：密碼比對環境變數 `ADMIN_PASSWORD`，工作階段是簽章 Cookie（HttpOnly、SameSite=Lax、7 天）。連續輸錯 10 次封鎖 5 分鐘。
 
 ## 資料
-- `stores`：店家主表。系統類型 `system_type` 在程式端驗證（heyu、skin、other），新增類型只要改 `src/validate.js` 與前端選單，不需要 migration。
+- `system_types`：系統類型（可重複使用的範本），在後台「系統類型」分頁新增、修改、刪除，不用改程式。欄位：key（建立後不可改）、名稱、說明、程式 repo、是否已提供遠端管理介面（`remote_supported`）、排序。預設有 booking（預約型）、order（訂購型）、membership（會員場館型）、other（其他，不可刪）。
+- `stores`：店家主表。`system_type` 外鍵指向 `system_types.key`，類型是「範本」、店家是「實際上線的一套部署」；一個類型底下可以有多家店。舊資料的 heyu、skin 在 migration 003 併入 booking；禾域、妍序的差異（臉部或身體、功能模組）由各店回報的模組決定，不靠類型區分。
+- 店家頁（遠端管理）能不能用，看該店類型的 `remote_supported`，不再寫死在程式裡。
 - `audit_log`：異動紀錄。修改只記有變動的欄位；刪除會存整筆快照。
 - 月費只計 `status = running` 的店家。合約到期天數以台北日期計算，30 日內算即將到期。
-- migrations 只增不改：要加欄位就新增 `002_xxx.sql`。
+- migrations 只增不改：要加欄位就新增下一個編號的 `.sql` 檔。
 
 ## 合作慣例
 - 一律繁體中文；畫面文字不用表情符號。

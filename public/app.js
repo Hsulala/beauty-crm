@@ -1,11 +1,15 @@
 const STATUS_LABEL = { building: '建置中', running: '運作中', paused: '暫停', ended: '已結束' };
-const SYSTEM_LABEL = { heyu: '禾域 HEYU（按摩）', skin: '妍序 Skin（皮膚管理）', order: '訂購型（戀鳳爪、麻辣醬等）', other: '其他系統' };
+// 舊版把店名當類型存（heyu、skin）；異動紀錄裡可能還看得到，讓它們顯示得出來。
+const LEGACY_TYPE_LABEL = { heyu: '禾域 HEYU', skin: '妍序 Skin' };
+const TYPE_FIELD_LABEL = { label: '名稱', description: '說明', repo: '程式 repo', remote_supported: '遠端管理', sort_order: '排序' };
 const FIELD_LABEL = {
   name: '店名', system_type: '系統', url: '網址', status: '狀態', monthly_fee: '月費',
   contract_start: '合約起日', contract_end: '合約到期日', notes: '備註',
 };
-const ACTION_LABEL = { 'store.create': '新增', 'store.update': '修改', 'store.delete': '刪除', 'store.remote_keys': '連線金鑰', 'store.modules': '功能模組' };
-const REMOTE_SYSTEMS = ['heyu', 'skin', 'order'];
+const ACTION_LABEL = {
+  'store.create': '新增', 'store.update': '修改', 'store.delete': '刪除', 'store.remote_keys': '連線金鑰', 'store.modules': '功能模組',
+  'type.create': '新增類型', 'type.update': '修改類型', 'type.delete': '刪除類型',
+};
 
 const money = (value) => `NT$${Number(value).toLocaleString('zh-TW')}`;
 const $ = (selector) => document.querySelector(selector);
@@ -37,7 +41,11 @@ async function api(path, { method = 'GET', body } = {}) {
   return { ok: response.ok, status: response.status, data };
 }
 
-const state = { stores: [], summary: null, audit: [], filter: 'all' };
+const state = { stores: [], types: [], summary: null, audit: [], filter: 'all', view: 'stores' };
+
+const typeOf = (key) => state.types.find((type) => type.key === key);
+const typeLabel = (key) => typeOf(key)?.label ?? LEGACY_TYPE_LABEL[key] ?? key;
+const remoteSupported = (store) => Boolean(typeOf(store.system_type)?.remote_supported);
 
 // ---------- 畫面 ----------
 function contractText(store) {
@@ -91,7 +99,7 @@ function renderList() {
     box.append(h('article', { class: `store status-${store.status}` },
       h('div', { class: 'store-main' },
         h('h2', {}, store.name),
-        h('p', { class: 'muted' }, SYSTEM_LABEL[store.system_type] ?? store.system_type),
+        h('p', { class: 'muted' }, typeLabel(store.system_type)),
         store.notes && h('p', { class: 'notes' }, store.notes)),
       h('div', { class: 'store-status' }, h('span', { class: `badge is-${store.status}` }, STATUS_LABEL[store.status])),
       h('div', { class: 'store-fee' },
@@ -102,7 +110,7 @@ function renderList() {
         h('p', { class: `contract-text is-${kind}` }, contractText(store))),
       h('div', { class: 'store-url' }, store.url ? h('a', { href: store.url, target: '_blank', rel: 'noopener noreferrer' }, store.url.replace(/^https?:\/\//, '')) : h('span', { class: 'muted' }, '未填網址')),
       h('div', { class: 'store-actions' },
-        REMOTE_SYSTEMS.includes(store.system_type) && h('button', { type: 'button', class: 'btn quiet', onclick: () => openRemote(store) }, '店家頁'),
+        remoteSupported(store) && h('button', { type: 'button', class: 'btn quiet', onclick: () => openRemote(store) }, '店家頁'),
         h('button', { type: 'button', class: 'btn quiet', onclick: () => openDialog(store) }, '編輯')),
     ));
   }
@@ -111,7 +119,7 @@ function renderList() {
 function formatValue(key, value) {
   if (value === null || value === '' || value === undefined) return '（空）';
   if (key === 'status') return STATUS_LABEL[value] ?? value;
-  if (key === 'system_type') return SYSTEM_LABEL[value] ?? value;
+  if (key === 'system_type') return typeLabel(value);
   if (key === 'monthly_fee') return money(value);
   if (key === 'notes') return '（內容已更新）';
   return String(value);
@@ -128,6 +136,13 @@ function renderAudit() {
       detail = Object.entries(entry.detail.changes ?? {}).map(([key, change]) =>
         key === 'notes' ? '備註已更新' : `${FIELD_LABEL[key] ?? key}：${formatValue(key, change.from)} → ${formatValue(key, change.to)}`).join('；');
     }
+    if (entry.action === 'type.update') {
+      detail = Object.entries(entry.detail.changes ?? {}).map(([key, change]) => {
+        if (key === 'description') return '說明已更新';
+        if (key === 'remote_supported') return `遠端管理：${change.from ? '支援' : '不支援'} → ${change.to ? '支援' : '不支援'}`;
+        return `${TYPE_FIELD_LABEL[key] ?? key}：${change.from === '' ? '（空）' : change.from} → ${change.to === '' ? '（空）' : change.to}`;
+      }).join('；');
+    }
     if (entry.action === 'store.remote_keys') {
       const verb = { set: '已設定', cleared: '已清除' };
       detail = [['read', '讀取金鑰'], ['write', '寫入金鑰']].filter(([key]) => entry.detail?.[key]).map(([key, label]) => `${label}${verb[entry.detail[key]] ?? ''}`).join('；');
@@ -139,10 +154,53 @@ function renderAudit() {
   }
 }
 
-function renderAll() { renderSummary(); renderAttention(); renderList(); renderAudit(); }
+// ---------- 系統類型 ----------
+function renderTypes() {
+  const box = $('#type-list');
+  box.replaceChildren();
+  if (!state.types.length) { box.append(h('p', { class: 'empty' }, '還沒有系統類型。按右上角「新增類型」開始。')); return; }
+  for (const type of state.types) {
+    box.append(h('article', { class: 'type-card' },
+      h('div', { class: 'type-head' },
+        h('h2', {}, type.label),
+        h('code', { class: 'type-key' }, type.key),
+        h('span', { class: `badge ${type.remote_supported ? 'is-running' : ''}` }, type.remote_supported ? '支援遠端管理' : '未接遠端管理'),
+        h('span', { class: 'spacer' }),
+        h('button', { type: 'button', class: 'btn quiet', onclick: () => openTypeDialog(type) }, '編輯')),
+      type.description && h('p', { class: 'type-desc' }, type.description),
+      type.repo && h('p', { class: 'muted' }, `程式 repo：${type.repo}`),
+      h('div', { class: 'type-stores' },
+        h('span', { class: 'type-count' }, `${type.store_count} 家店`),
+        type.stores.map((store) => h('button', {
+          type: 'button', class: `chip status-${store.status}`, title: '編輯這家店',
+          onclick: () => openDialog(state.stores.find((s) => s.id === store.id)),
+        }, store.name)),
+        !type.store_count && h('span', { class: 'muted' }, '目前沒有店家使用這個類型'))));
+  }
+}
+
+function fillTypeSelect(selected) {
+  const select = $('#f-system_type');
+  select.replaceChildren(...state.types.map((type) => h('option', { value: type.key }, type.label)));
+  // 舊紀錄的類型若已不存在，仍保留原值避免被誤改。
+  if (selected && !typeOf(selected)) select.append(h('option', { value: selected }, `${typeLabel(selected)}（已不存在）`));
+  select.value = selected ?? 'other';
+}
+
+function setView(view) {
+  state.view = view;
+  $('#view-stores').hidden = view !== 'stores';
+  $('#view-types').hidden = view !== 'types';
+  $('#add-btn').hidden = view !== 'stores';
+  $('#add-type-btn').hidden = view !== 'types';
+  for (const tab of document.querySelectorAll('.tab')) tab.classList.toggle('is-active', tab.dataset.view === view);
+}
+
+function renderAll() { renderSummary(); renderAttention(); renderList(); renderTypes(); renderAudit(); }
 
 async function load() {
-  const [stores, summary, audit] = await Promise.all([api('/api/stores'), api('/api/summary'), api('/api/audit?limit=30')]);
+  const [stores, summary, audit, types] = await Promise.all([api('/api/stores'), api('/api/summary'), api('/api/audit?limit=30'), api('/api/types')]);
+  state.types = types.data.types ?? [];
   state.stores = stores.data.stores ?? [];
   state.summary = summary.data;
   state.audit = audit.data.entries ?? [];
@@ -171,7 +229,8 @@ function openDialog(store) {
   $('#dialog-title').textContent = store ? `編輯：${store.name}` : '新增店家';
   $('#delete-btn').hidden = !store;
   const values = store ?? { name: '', system_type: 'other', status: 'building', monthly_fee: 0, url: '', contract_start: '', contract_end: '', notes: '' };
-  for (const key of Object.keys(FIELD_LABEL)) form.elements[key].value = values[key] ?? '';
+  fillTypeSelect(values.system_type);
+  for (const key of Object.keys(FIELD_LABEL)) if (key !== 'system_type') form.elements[key].value = values[key] ?? '';
   showErrors();
   dialog.showModal();
   form.elements.name.focus();
@@ -226,7 +285,7 @@ const errorText = (result) => (result.data.fields ? Object.values(result.data.fi
 async function openRemote(store) {
   remote.store = store; remote.month = ''; remote.overview = null; remote.status = null; remote.seq += 1;
   $('#remote-title').textContent = `店家頁：${store.name}`;
-  $('#remote-sub').textContent = SYSTEM_LABEL[store.system_type] ?? '';
+  $('#remote-sub').textContent = typeLabel(store.system_type);
   for (const id of ['#remote-read-key', '#remote-write-key']) $(id).value = '';
   for (const id of ['#remote-modules-error', '#remote-modules-ok', '#remote-keys-error']) showMessage(id, '');
   $('#remote-stats').replaceChildren(h('p', { class: 'muted' }, '讀取中…'));
@@ -382,6 +441,82 @@ async function refreshAudit() {
   state.audit = audit.data.entries ?? [];
   renderAudit();
 }
+
+// ---------- 新增 / 編輯系統類型 ----------
+const typeDialog = $('#type-dialog');
+const typeForm = $('#type-form');
+let editingType = null;
+
+function showTypeErrors(fields = {}, general = '') {
+  for (const node of typeForm.querySelectorAll('[data-error]')) {
+    const message = fields[node.dataset.error];
+    node.textContent = message ?? '';
+    node.hidden = !message;
+  }
+  const box = $('#type-form-error');
+  const unmatched = Object.entries(fields).filter(([key]) => !typeForm.querySelector(`[data-error="${key}"]`)).map(([, message]) => message);
+  box.textContent = [general, ...unmatched].filter(Boolean).join('；');
+  box.hidden = !box.textContent;
+}
+
+function openTypeDialog(type) {
+  editingType = type ?? null;
+  $('#type-dialog-title').textContent = type ? `編輯類型：${type.label}` : '新增系統類型';
+  const values = type ?? { key: '', label: '', description: '', repo: '', remote_supported: false, sort_order: 50 };
+  typeForm.elements.key.value = values.key;
+  typeForm.elements.key.disabled = Boolean(type);
+  typeForm.elements.label.value = values.label;
+  typeForm.elements.description.value = values.description;
+  typeForm.elements.repo.value = values.repo;
+  typeForm.elements.remote_supported.checked = values.remote_supported;
+  typeForm.elements.sort_order.value = values.sort_order;
+  // 「其他」是預設類型，不能刪；仍有店家使用的類型要先改走店家，所以刪除鈕只在可刪時出現。
+  $('#type-delete-btn').hidden = !type || type.key === 'other';
+  showTypeErrors();
+  typeDialog.showModal();
+  typeForm.elements.label.focus();
+}
+
+function readTypeForm() {
+  const f = typeForm.elements;
+  return {
+    key: f.key.value.trim(), label: f.label.value.trim(), description: f.description.value, repo: f.repo.value.trim(),
+    remote_supported: f.remote_supported.checked, sort_order: f.sort_order.value === '' ? 50 : Number(f.sort_order.value),
+  };
+}
+
+typeForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const values = readTypeForm();
+  let result;
+  if (editingType) {
+    delete values.key;
+    // 只送出有改的欄位。
+    const changed = Object.fromEntries(Object.entries(values).filter(([key, value]) => value !== editingType[key]));
+    if (!Object.keys(changed).length) { typeDialog.close(); return; }
+    result = await api(`/api/types/${encodeURIComponent(editingType.key)}`, { method: 'PATCH', body: changed });
+  } else {
+    result = await api('/api/types', { method: 'POST', body: values });
+  }
+  if (!result.ok) { showTypeErrors(result.data.fields, result.data.fields ? '' : result.data.error); return; }
+  typeDialog.close();
+  await load();
+});
+
+$('#type-cancel-btn').addEventListener('click', () => typeDialog.close());
+typeDialog.addEventListener('click', (event) => { if (event.target === typeDialog) typeDialog.close(); });
+
+$('#type-delete-btn').addEventListener('click', async () => {
+  if (!editingType) return;
+  if (!confirm(`確定刪除系統類型「${editingType.label}」？只有沒有店家使用時才能刪除。`)) return;
+  const result = await api(`/api/types/${encodeURIComponent(editingType.key)}`, { method: 'DELETE' });
+  if (!result.ok) { showTypeErrors({}, result.data.error); return; }
+  typeDialog.close();
+  await load();
+});
+
+for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => setView(tab.dataset.view));
+$('#add-type-btn').addEventListener('click', () => openTypeDialog(null));
 
 $('#add-btn').addEventListener('click', () => openDialog(null));
 $('#logout-btn').addEventListener('click', async () => { await api('/api/logout', { method: 'POST' }).catch(() => {}); location.href = '/login.html'; });
