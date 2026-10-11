@@ -311,3 +311,53 @@ label { color: var(--ink); }
 .store-icon.is-lg { width: 72px; height: 72px; border-radius: 16px; font-size: 32px; }
 .icon-edit { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .field-label { font-size: 13.5px; font-weight: 600; }
+
+/* ===== 入口排版：搜尋、分類按鈕、常用、清單 ===== */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.top { padding-bottom: 14px; }
+.links-bar { display: flex; align-items: stretch; gap: 12px; margin: 4px 0 0; }
+.links-bar input[type="search"] { flex: 1 1 auto; width: auto; min-width: 0; height: 52px; padding: 0 20px; font-size: 16px; font-weight: 500; border-width: 3px; border-radius: 999px; box-shadow: 4px 4px 0 var(--ink); }
+.links-bar input[type="search"]:focus { box-shadow: 4px 4px 0 var(--ink), 0 0 0 3px var(--accent-soft); }
+.status-select { flex: none; display: flex; }
+.status-select select { width: auto; height: 52px; padding: 0 14px; font-weight: 600; border-width: 3px; border-radius: 999px; cursor: pointer; }
+
+.category-filters { gap: 10px; margin: 18px 0 8px; }
+.link-filter { display: inline-flex; align-items: center; gap: 8px; padding: 6px 18px; font-size: 15px; white-space: nowrap; }
+.link-filter .count { font-size: 12.5px; font-weight: 700; line-height: 1; padding: 3px 7px; border-radius: 999px; background: var(--paper); color: var(--muted); }
+.link-filter.is-active .count { background: #fff; color: var(--ink); }
+
+.link-pinned { margin-top: 18px; padding: 4px 18px 18px; background: var(--accent-soft); border: 3px solid var(--ink); border-radius: 18px; box-shadow: 5px 5px 0 var(--ink); }
+.link-pinned .link-section { margin-top: 12px; }
+.link-pinned .link-cards { margin-top: 10px; }
+
+.link-list { gap: 4px; margin-top: 8px; }
+.link-section { display: flex; align-items: center; gap: 12px; font-size: 22px; line-height: 1.2; margin: 22px 0 10px; }
+.link-section::after { content: ""; flex: 1; height: 2px; background: var(--ink); opacity: .18; }
+.link-pinned .link-section::after { opacity: .3; }
+.link-cards { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.link-card { gap: 4px; padding: 12px 16px 10px; border-width: 2.5px; border-radius: 14px; box-shadow: 4px 4px 0 var(--ink); }
+.link-head h3 { font-size: 16px; line-height: 1.35; }
+.link-desc { color: var(--muted); font-size: 13.5px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.link-urls { margin-top: 4px; gap: 6px; }
+.link-urls li { justify-content: flex-start; flex-wrap: wrap; }
+.link-urls li .link-tool { margin-left: auto; }
+.link-foot { justify-content: flex-start; flex-wrap: wrap; gap: 4px 14px; padding-top: 4px; }
+.card-title-link { text-decoration-thickness: 2px; }
+
+/* 桌機上次要操作淡一點，滑過或鍵盤聚焦才清楚；觸控裝置一律清楚 */
+@media (hover: hover) {
+  .link-foot, .link-urls .link-tool { opacity: .5; transition: opacity .12s; }
+  .link-card:hover .link-foot, .link-card:focus-within .link-foot, .link-card:hover .link-urls .link-tool, .link-card:focus-within .link-urls .link-tool { opacity: 1; }
+}
+
+@media (max-width: 860px) {
+  .links-bar { flex-wrap: wrap; }
+  .links-bar input[type="search"] { flex-basis: 100%; height: 48px; }
+  .status-select select { height: 40px; font-size: 14px; }
+  /* 分類按鈕收成一排，左右滑動，不佔掉整個畫面 */
+  .category-filters { flex-wrap: nowrap; overflow-x: auto; margin-left: -16px; margin-right: -16px; padding: 4px 16px 10px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .category-filters::-webkit-scrollbar { display: none; }
+  .link-filter { flex: none; }
+  .link-pinned { padding: 2px 14px 14px; }
+  .link-cards { grid-template-columns: 1fr; gap: 12px; }
+}

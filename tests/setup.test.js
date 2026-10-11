@@ -79,11 +79,16 @@ test('頁面守門：沒有行內程式、沒有表情符號，且 HTML 用到�
   const html = readFileSync(join(dir, 'index.html'), 'utf8'), js = readFileSync(join(dir, 'app.js'), 'utf8');
   for (const [, id] of js.matchAll(/\$\('#([\w-]+)'\)/g)) assert.ok(html.includes(`id="${id}"`), `app.js 用到 #${id}，HTML 找不到`);
   for (const key of ['name', 'system_type', 'url', 'status', 'monthly_fee', 'contract_start', 'contract_end', 'notes']) assert.ok(html.includes(`name="${key}"`), `表單缺少欄位 ${key}`);
-  assert.match(html, /data-view="links">常用工具</);
+  // 入口頁：搜尋框、分類按鈕、常用區、清單；店家管理與系統類型收在「管理」裡
+  for (const id of ['link-search', 'link-category-filters', 'link-pinned', 'link-list', 'manage-btn', 'manage']) assert.ok(html.includes(`id="${id}"`), id);
   assert.match(html, /<select id="l-category" name="category">/);
-  assert.ok(html.includes('id="link-category-filters"'));
-  assert.equal(js.includes("else if (!query && link.store_id != null) return false"), false, '常用工具不可預設隱藏店家連結');
-  assert.equal(js.includes("onclick: () => showStoreLinks(store)"), false, '店家卡片不應再放連結管理按鈕');
+  assert.ok(html.indexOf('id="link-search"') < html.indexOf('id="link-category-filters"'), '搜尋框要在分類按鈕上方');
+  assert.ok(html.indexOf('id="link-category-filters"') < html.indexOf('id="link-pinned"') && html.indexOf('id="link-pinned"') < html.indexOf('id="link-list"'), '順序：分類、常用、清單');
+  assert.equal(/data-view="links"/.test(html), false, '入口不再是分頁');
+  for (const name of ['表格', '工具', '文件', '機器人', '店家系統']) assert.ok(js.includes(name), name);
+  // 入口頁不顯示金額：連結畫面（從「連結入口」到「新增／編輯」之前）不能碰月費
+  const entry = js.slice(js.indexOf('// ---------- 連結入口 ----------'), js.indexOf("const linkDialog = $('#link-dialog')"));
+  assert.equal(/monthly_fee|money\(|每月|NT\$/.test(entry), false, '入口不可出現金額');
   assert.ok(html.includes('id="icon-sync-status"'));
   assert.ok(html.includes('id="icon-sync-btn"'));
   assert.match(html, /只有下方顯示「已同步」才代表顧客頁已套用/);
