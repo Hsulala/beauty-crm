@@ -14,18 +14,49 @@
   <header class="top">
     <div><p class="kicker">Store Hub</p><h1>HUB<span class="dot">.</span><span class="zh">店家總覽</span></h1></div>
     <div class="top-actions">
-      <button type="button" id="add-link-btn" class="btn primary" hidden>新增連結</button>
+      <button type="button" id="add-link-btn" class="btn primary">新增連結</button>
       <button type="button" id="add-type-btn" class="btn primary" hidden>新增類型</button>
-      <button type="button" id="add-btn" class="btn primary">新增店家</button>
+      <button type="button" id="add-btn" class="btn primary" hidden>新增店家</button>
+      <button type="button" id="manage-btn" class="btn">管理</button>
       <button type="button" id="logout-btn" class="btn quiet">登出</button>
     </div>
   </header>
 
   <main>
-    <nav class="tabs" role="group" aria-label="切換檢視">
-      <button type="button" class="tab is-active" data-view="stores">店家</button>
+    <div id="view-links">
+      <div class="links-bar">
+        <input id="link-search" type="search" placeholder="搜尋名稱、說明、標籤或網址" aria-label="搜尋連結" maxlength="60" autocomplete="off">
+        <label class="status-select">
+          <span class="sr-only">顯示狀態</span>
+          <select id="link-status" aria-label="顯示狀態">
+            <option value="default">正常與待處理</option>
+            <option value="active">只看正常</option>
+            <option value="pending">只看待處理</option>
+            <option value="hidden">只看隱藏</option>
+            <option value="all">全部（含隱藏）</option>
+          </select>
+        </label>
+      </div>
+      <div id="link-category-filters" class="filters category-filters" role="group" aria-label="依分類篩選"></div>
+      <p class="ok-note" id="links-msg" role="status" hidden></p>
+      <p class="field-error" id="links-error" role="alert" hidden></p>
+      <section id="link-pinned" class="link-pinned" aria-label="常用" hidden></section>
+      <section id="link-list" class="link-list" aria-label="連結清單"></section>
+
+      <details class="import-box">
+        <summary>從 Linkbase 匯入（一次性）</summary>
+        <p class="hint">選擇 Linkbase 匯出的 JSON 備份檔。重複的網址會略過，不會覆蓋你在這裡改過的資料；備份檔裡的帳號密碼不會匯入。只存連結，不存帳號密碼，請放在密碼管理器。</p>
+        <div class="section-actions">
+          <button type="button" id="import-links-btn" class="btn">選擇備份檔</button>
+          <input type="file" id="import-file" accept="application/json,.json" hidden>
+        </div>
+      </details>
+    </div>
+
+    <div id="manage" hidden>
+    <nav class="tabs" role="group" aria-label="管理">
+      <button type="button" class="tab is-active" data-view="stores">店家管理</button>
       <button type="button" class="tab" data-view="types">系統類型</button>
-      <button type="button" class="tab" data-view="links">常用工具</button>
     </nav>
 
     <div id="view-stores">
@@ -49,37 +80,11 @@
       <section id="type-list" class="type-list" aria-label="系統類型清單"></section>
     </div>
 
-    <div id="view-links" hidden>
-      <div class="links-bar">
-        <input id="link-search" type="search" placeholder="搜尋名稱、標籤、分類、說明" aria-label="搜尋連結" maxlength="60">
-        <div class="filters links-filters" role="group" aria-label="依狀態篩選連結">
-          <button type="button" class="link-filter is-active" data-link-filter="all">全部</button>
-          <button type="button" class="link-filter" data-link-filter="active">正常</button>
-          <button type="button" class="link-filter" data-link-filter="pending">待處理</button>
-          <button type="button" class="link-filter" data-link-filter="hidden">隱藏</button>
-        </div>
-      </div>
-      <div id="link-category-filters" class="filters category-filters" role="group" aria-label="依分類篩選常用工具"></div>
-      <div id="link-scope" class="link-scope" hidden></div>
-      <p class="ok-note" id="links-msg" role="status" hidden></p>
-      <p class="field-error" id="links-error" role="alert" hidden></p>
-      <p class="hint" id="links-hint">這裡集中所有日常會用到的工具與店家連結。可用分類快速切換，釘選的工具會排在最前面。只存連結，不存帳號密碼，請放在密碼管理器。</p>
-      <section id="link-list" class="link-list" aria-label="連結清單"></section>
-
-      <details class="import-box">
-        <summary>從 Linkbase 匯入（一次性）</summary>
-        <p class="hint">選擇 Linkbase 匯出的 JSON 備份檔。重複的網址會略過，不會覆蓋你在這裡改過的資料；備份檔裡的帳號密碼不會匯入。匯入完成後就不再需要另一個網站。</p>
-        <div class="section-actions">
-          <button type="button" id="import-links-btn" class="btn">選擇備份檔</button>
-          <input type="file" id="import-file" accept="application/json,.json" hidden>
-        </div>
-      </details>
-    </div>
-
     <details class="audit">
       <summary>異動紀錄</summary>
       <ol id="audit-list" class="audit-list"></ol>
     </details>
+    </div>
   </main>
 
   <dialog id="store-dialog" aria-labelledby="dialog-title">
