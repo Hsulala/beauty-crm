@@ -10,7 +10,7 @@ import { MIGRATIONS, startApp } from './helpers/app.js';
 test('migration：第二次執行不會重跑，資料表都建好了', async () => {
   const db = await createPgliteDb();
   try {
-    assert.deepEqual(await migrate(db, MIGRATIONS), ['001_init.sql', '002_store_remote.sql', '003_store_icon.sql', '004_system_types.sql', '005_links.sql', '006_store_icon_sync.sql']);
+    assert.deepEqual(await migrate(db, MIGRATIONS), ['001_init.sql', '002_store_remote.sql', '003_store_icon.sql', '004_system_types.sql', '005_links.sql', '006_store_icon_sync.sql', '007_store_website.sql', '008_store_dev_links.sql']);
     assert.deepEqual(await migrate(db, MIGRATIONS), []);
     const tables = (await db.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")).rows.map((r) => r.table_name);
     for (const name of ['stores', 'audit_log', 'schema_migrations', 'store_remote', 'store_icon', 'store_icon_sync', 'system_types', 'links']) assert.ok(tables.includes(name), name);
@@ -91,7 +91,7 @@ test('頁面守門：沒有行內程式、沒有表情符號，且 HTML 用到�
   assert.equal(/monthly_fee|money\(|每月|NT\$/.test(entry), false, '入口不可出現金額');
   assert.ok(html.includes('id="icon-sync-status"'));
   assert.ok(html.includes('id="icon-sync-btn"'));
-  assert.match(html, /只有下方顯示「已同步」才代表顧客頁已套用/);
+  assert.match(html, /下方狀態出現「已同步到顧客頁」才算完成/);
   assert.equal(js.includes('store-icon${large ?'), true, 'Logo 預覽應只由編輯欄位使用');
 });
 

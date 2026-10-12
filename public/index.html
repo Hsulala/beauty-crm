@@ -97,13 +97,13 @@
           <span id="icon-preview" class="store-icon is-lg"></span>
           <div class="section-actions">
             <button type="button" id="icon-upload-btn" class="btn quiet">上傳圖片</button>
-            <button type="button" id="icon-fetch-btn" class="btn quiet">從店家網站抓取</button>
+            <button type="button" id="icon-fetch-btn" class="btn quiet" title="到「官網網址」抓取 Logo（需先填官網網址）">從官網抓取</button>
             <button type="button" id="icon-remove-btn" class="btn quiet">移除</button>
             <button type="button" id="icon-sync-btn" class="btn quiet">立即同步</button>
           </div>
         </div>
         <input type="file" id="icon-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
-        <p class="hint">建議用正方形圖片，會自動縮成 128×128。Logo 會先儲存在 CRM，再同步到顧客頁；只有下方顯示「已同步」才代表顧客頁已套用。</p>
+        <p class="hint">上傳店家 Logo（正方形最好，會自動縮成 128×128）。上傳後按「立即同步」，下方狀態出現「已同步到顧客頁」才算完成。「從官網抓取」需要先在下面填好「官網網址」；抓不到就改用「上傳圖片」。</p>
         <p class="hint" id="icon-sync-status" role="status"></p>
         <p class="field-error" id="icon-error" hidden></p>
       </div>
@@ -138,9 +138,30 @@
       </div>
 
       <div class="field">
-        <label for="f-url">網址</label>
+        <label for="f-url">系統網址（店家後台）</label>
         <input id="f-url" name="url" type="url" placeholder="https://" maxlength="300">
+        <p class="hint">CRM 用這個網址連到店家系統（同步 Logo、開關功能），例如 https://xxx.up.railway.app/admin/</p>
         <p class="field-error" data-error="url" hidden></p>
+      </div>
+
+      <div class="field">
+        <label for="f-website">官網網址（選填）</label>
+        <input id="f-website" name="website" type="url" placeholder="https://" maxlength="300">
+        <p class="hint">店家自己的官方網站。只用來「從官網抓取 Logo」，不會送出任何金鑰。</p>
+        <p class="field-error" data-error="website" hidden></p>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="f-github_url">GitHub 網址（選填）</label>
+          <input id="f-github_url" name="github_url" type="url" placeholder="https://github.com/…" maxlength="300">
+          <p class="field-error" data-error="github_url" hidden></p>
+        </div>
+        <div class="field">
+          <label for="f-railway_url">Railway 網址（選填）</label>
+          <input id="f-railway_url" name="railway_url" type="url" placeholder="https://railway.com/project/…" maxlength="300">
+          <p class="field-error" data-error="railway_url" hidden></p>
+        </div>
       </div>
 
       <div class="field-row">
