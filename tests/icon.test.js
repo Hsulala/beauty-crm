@@ -44,9 +44,9 @@ test('店家小圖示：從店家網站抓 /apple-touch-icon.png，只收 PNG、
   const app = await startApp();
   try {
     await app.login();
-    const noUrl = (await app.request('/api/stores', { method: 'POST', body: { name: '沒網址' } })).json;
+    const noUrl = (await app.request('/api/stores', { method: 'POST', body: { name: '沒官網' } })).json;
     assert.equal((await app.request(`/api/stores/${noUrl.id}/icon/fetch`, { method: 'POST' })).status, 400);
-    const store = (await app.request('/api/stores', { method: 'POST', body: { name: '有網址', url: `http://127.0.0.1:${site.address().port}` } })).json;
+    const store = (await app.request('/api/stores', { method: 'POST', body: { name: '有官網', website: `http://127.0.0.1:${site.address().port}` } })).json;
     assert.equal((await app.request(`/api/stores/${store.id}/icon/fetch`, { method: 'POST' })).status, 200);
     mode = 'html';
     assert.equal((await app.request(`/api/stores/${store.id}/icon/fetch`, { method: 'POST' })).status, 400);

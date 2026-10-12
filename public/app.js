@@ -3,7 +3,7 @@ const STATUS_LABEL = { building: '建置中', running: '運作中', paused: '暫
 const LEGACY_TYPE_LABEL = { heyu: '禾域 HEYU', skin: '妍序 Skin' };
 const TYPE_FIELD_LABEL = { label: '名稱', description: '說明', repo: '程式 repo', remote_supported: '遠端管理', sort_order: '排序' };
 const FIELD_LABEL = {
-  name: '店名', system_type: '系統', url: '網址', status: '狀態', monthly_fee: '月費',
+  name: '店名', system_type: '系統', url: '系統網址', website: '官網網址', github_url: 'GitHub 網址', railway_url: 'Railway 網址', status: '狀態', monthly_fee: '月費',
   contract_start: '合約起日', contract_end: '合約到期日', notes: '備註',
 };
 const ACTION_LABEL = {
@@ -114,12 +114,19 @@ function renderList() {
       h('div', { class: 'store-contract' },
         progress !== null && h('div', { class: 'bar', 'aria-hidden': 'true' }, fill),
         h('p', { class: `contract-text is-${kind}` }, contractText(store))),
-      h('div', { class: 'store-url' }, store.url ? h('a', { href: store.url, target: '_blank', rel: 'noopener noreferrer' }, store.url.replace(/^https?:\/\//, '')) : h('span', { class: 'muted' }, '未填網址')),
+      h('div', { class: 'store-url store-links' }, storeLinkNodes(store)),
       h('div', { class: 'store-actions' },
         remoteSupported(store) && h('button', { type: 'button', class: 'btn quiet', onclick: () => openRemote(store) }, '店家頁'),
         h('button', { type: 'button', class: 'btn quiet', onclick: () => openDialog(store) }, '編輯')),
     ));
   }
+}
+
+// 店家卡片上的入口：後台（系統網址）、GitHub、Railway，有填的才顯示。
+function storeLinkNodes(store) {
+  const entries = [['後台', store.url], ['GitHub', store.github_url], ['Railway', store.railway_url]].filter(([, url]) => url);
+  if (!entries.length) return [h('span', { class: 'muted' }, '尚未填任何網址')];
+  return entries.map(([label, url]) => h('a', { class: 'link-chip', href: url, target: '_blank', rel: 'noopener noreferrer', title: url }, label));
 }
 
 function formatValue(key, value) {
@@ -517,7 +524,7 @@ function renderIconField() {
   if (!editing) return;
   $('#icon-preview').replaceWith(Object.assign(iconNode(editing, true), { id: 'icon-preview' }));
   $('#icon-remove-btn').disabled = !editing.icon_v;
-  $('#icon-fetch-btn').disabled = !editing.url;
+  $('#icon-fetch-btn').disabled = !editing.website;
   $('#icon-sync-btn').disabled = false;
   const status = $('#icon-sync-status');
   if (editing.icon_sync_state === 'synced') {
@@ -598,7 +605,7 @@ function openDialog(store) {
   editing = store ?? null;
   $('#dialog-title').textContent = store ? `編輯：${store.name}` : '新增店家';
   $('#delete-btn').hidden = !store;
-  const values = store ?? { name: '', system_type: 'other', status: 'building', monthly_fee: 0, url: '', contract_start: '', contract_end: '', notes: '' };
+  const values = store ?? { name: '', system_type: 'other', status: 'building', monthly_fee: 0, url: '', website: '', github_url: '', railway_url: '', contract_start: '', contract_end: '', notes: '' };
   fillTypeSelect(values.system_type);
   for (const key of Object.keys(FIELD_LABEL)) if (key !== 'system_type') form.elements[key].value = values[key] ?? '';
   showErrors();
@@ -612,7 +619,7 @@ function readForm() {
   return {
     name: raw.name.trim(), system_type: raw.system_type, status: raw.status,
     monthly_fee: raw.monthly_fee === '' ? 0 : Number(raw.monthly_fee),
-    url: raw.url.trim(), contract_start: raw.contract_start || null, contract_end: raw.contract_end || null, notes: raw.notes,
+    url: raw.url.trim(), website: raw.website.trim(), github_url: raw.github_url.trim(), railway_url: raw.railway_url.trim(), contract_start: raw.contract_start || null, contract_end: raw.contract_end || null, notes: raw.notes,
   };
 }
 

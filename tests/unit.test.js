@@ -41,7 +41,7 @@ test('合約狀態：已過期、30 日內、正常、未設定、已結束', ()
 test('驗證：新增補預設值，缺店名會被擋', () => {
   const ok = parseStore({ name: '  某某店  ' }, { partial: false });
   assert.deepEqual(ok.errors, {});
-  assert.deepEqual(ok.value, { name: '某某店', system_type: 'other', url: '', status: 'building', monthly_fee: 0, contract_start: null, contract_end: null, notes: '' });
+  assert.deepEqual(ok.value, { name: '某某店', system_type: 'other', url: '', website: '', github_url: '', railway_url: '', status: 'building', monthly_fee: 0, contract_start: null, contract_end: null, notes: '' });
   assert.ok(parseStore({}, { partial: false }).errors.name);
   assert.ok(parseStore('x', { partial: false }).errors._);
   assert.ok(parseStore([], { partial: false }).errors._);
@@ -97,4 +97,19 @@ test('登入限制：失敗次數到上限就封鎖，成功後歸零，過了�
   limiter.fail('b'); limiter.reset('b');
   limiter.fail('b'); limiter.fail('b');
   assert.equal(limiter.blocked('b'), false);
+});
+
+test('驗證：官網網址選填，只收 http／https', () => {
+  assert.deepEqual(parseStore({ website: '  https://example.com  ' }, { partial: true }).value, { website: 'https://example.com' });
+  assert.deepEqual(parseStore({ website: '' }, { partial: true }).value, { website: '' });
+  assert.ok(parseStore({ website: 'ftp://example.com' }, { partial: true }).errors.website);
+  assert.ok(parseStore({ website: 'not a url' }, { partial: true }).errors.website);
+  assert.ok(parseStore({ website: 123 }, { partial: true }).errors.website);
+});
+
+test('驗證：GitHub、Railway 網址選填，只收 http／https', () => {
+  const ok = parseStore({ github_url: ' https://github.com/Hsulala/x ', railway_url: 'https://railway.com/project/abc' }, { partial: true });
+  assert.deepEqual(ok.value, { github_url: 'https://github.com/Hsulala/x', railway_url: 'https://railway.com/project/abc' });
+  assert.ok(parseStore({ github_url: 'git@github.com:a/b.git' }, { partial: true }).errors.github_url);
+  assert.ok(parseStore({ railway_url: 'javascript:alert(1)' }, { partial: true }).errors.railway_url);
 });

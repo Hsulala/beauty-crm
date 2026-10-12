@@ -8,7 +8,7 @@ import { LINK_FIELD_NAMES, normalizeImport, parseLink } from './links.js';
 import { RemoteError, callStore, remoteUrl } from './remote.js';
 import { open, seal } from './secretbox.js';
 
-const STORE_COLUMNS = `id, name, system_type, url, status, monthly_fee,
+const STORE_COLUMNS = `id, name, system_type, url, website, github_url, railway_url, status, monthly_fee,
   to_char(contract_start, 'YYYY-MM-DD') AS contract_start,
   to_char(contract_end, 'YYYY-MM-DD') AS contract_end,
   notes, created_at, updated_at`;
@@ -108,9 +108,9 @@ export function createApp({ db, config }) {
         const dup = await tx.query('SELECT 1 FROM stores WHERE lower(name) = lower($1)', [value.name]);
         if (dup.rows.length) return null;
         const { rows } = await tx.query(
-          `INSERT INTO stores (name, system_type, url, status, monthly_fee, contract_start, contract_end, notes)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${STORE_COLUMNS}`,
-          [value.name, value.system_type, value.url, value.status, value.monthly_fee, value.contract_start, value.contract_end, value.notes],
+          `INSERT INTO stores (name, system_type, url, website, github_url, railway_url, status, monthly_fee, contract_start, contract_end, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING ${STORE_COLUMNS}`,
+          [value.name, value.system_type, value.url, value.website, value.github_url, value.railway_url, value.status, value.monthly_fee, value.contract_start, value.contract_end, value.notes],
         );
         await tx.query(
           'INSERT INTO audit_log (action, store_id, store_name, detail) VALUES ($1, $2, $3, $4::jsonb)',
@@ -495,7 +495,7 @@ export function createApp({ db, config }) {
   const logoHash = (data) => (data ? createHash('sha256').update(data).digest('hex') : null);
   async function iconStore(request, response) {
     const id = parseId(request.params.id);
-    const store = id === null ? null : (await db.query('SELECT id, name, url, system_type FROM stores WHERE id = $1', [id])).rows[0];
+    const store = id === null ? null : (await db.query('SELECT id, name, url, website, system_type FROM stores WHERE id = $1', [id])).rows[0];
     if (!store) fail(response, 404, '找不到這家店');
     return store;
   }
@@ -577,18 +577,19 @@ export function createApp({ db, config }) {
     response.json({ ok: true, sync });
   });
 
-  // 從店家網站抓 /apple-touch-icon.png（只抓 PNG，不跟隨轉址，https 限定）
+  // 從店家官網抓 /apple-touch-icon.png（只抓 PNG，不跟隨轉址，https 限定）。用的是「官網網址」，不是店家系統網址。
   app.post('/api/stores/:id/icon/fetch', async (request, response) => {
     const store = await iconStore(request, response); if (!store) return;
+    if (!store.website) return fail(response, 400, '請先在這家店填上「官網網址」，再從官網抓取；或直接上傳圖片');
     let target;
-    try { target = remoteUrl(store.url, '/apple-touch-icon.png'); } catch (error) { return fail(response, 400, error.message === '這家店還沒填網址' ? error.message : '店家網址必須是 https 才能抓取圖示'); }
+    try { target = remoteUrl(store.website, '/apple-touch-icon.png'); } catch { return fail(response, 400, '官網網址必須是 https:// 開頭才能抓取，或改用上傳'); }
     let buf;
     try {
       const res = await (config.fetchImpl ?? fetch)(target, { redirect: 'manual', signal: AbortSignal.timeout(8000) });
-      if (!res.ok) return fail(response, 404, '店家網站沒有提供小圖示，請改用上傳');
+      if (!res.ok) return fail(response, 404, '官網沒有提供 Logo 圖檔（/apple-touch-icon.png），請改用上傳');
       buf = Buffer.from(await res.arrayBuffer());
-    } catch { return fail(response, 502, '連不上店家網站，請確認網址或改用上傳'); }
-    if (!isPng(buf)) return fail(response, 400, '店家網站的圖示不是 PNG 或太大，請改用上傳');
+    } catch { return fail(response, 502, '連不上官網，請確認官網網址或改用上傳'); }
+    if (!isPng(buf)) return fail(response, 400, '官網的 Logo 不是 PNG 或檔案太大，請改用上傳');
     const sync = await saveIcon(store, buf, 'fetch');
     response.json({ ok: true, sync });
   });

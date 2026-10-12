@@ -5,6 +5,24 @@ const isDate = (value) => typeof value === 'string'
   && /^\d{4}-\d{2}-\d{2}$/.test(value)
   && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 
+// 選填的網址欄位：空字串代表沒填；有填就只收 http／https。
+function optionalUrl(label) {
+  return {
+    fallback: '',
+    parse(raw) {
+      const value = typeof raw === 'string' ? raw.trim() : null;
+      if (value === null) return { error: `${label}格式不正確` };
+      if (value === '') return { value };
+      if (value.length > 300) return { error: `${label}太長` };
+      try {
+        const { protocol } = new URL(value);
+        if (protocol !== 'http:' && protocol !== 'https:') return { error: `${label}需以 http:// 或 https:// 開頭` };
+      } catch { return { error: `${label}格式不正確` }; }
+      return { value };
+    },
+  };
+}
+
 const fields = {
   name: {
     required: true,
@@ -33,6 +51,9 @@ const fields = {
       return { value };
     },
   },
+  website: optionalUrl('官網網址'),
+  github_url: optionalUrl('GitHub 網址'),
+  railway_url: optionalUrl('Railway 網址'),
   status: {
     fallback: 'building',
     parse: (raw) => (STATUSES.includes(raw) ? { value: raw } : { error: '狀態不正確' }),
