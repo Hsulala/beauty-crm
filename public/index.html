@@ -253,14 +253,15 @@
       <div class="field">
         <label for="l-title">項目名稱</label>
         <input id="l-title" name="title" type="text" maxlength="80" required>
-        <p class="hint">同一個項目有多個連結時，用同樣的名稱、不同的連結名稱分開存。</p>
+        <p class="hint">同一個項目有多個連結（後台、GitHub、Railway…）時，用同樣的項目名稱、不同的連結名稱分開存；存完一個可以按「儲存並再加一個」接著加。</p>
         <p class="field-error" data-error="title" hidden></p>
       </div>
 
       <div class="field-row">
         <div class="field">
           <label for="l-label">連結名稱</label>
-          <input id="l-label" name="label" type="text" maxlength="30" placeholder="例如：後台">
+          <input id="l-label" name="label" type="text" maxlength="30" placeholder="例如：後台" list="l-label-list" autocomplete="off">
+          <datalist id="l-label-list"><option value="後台"><option value="GitHub"><option value="Railway"><option value="官網"><option value="文件"></datalist>
           <p class="field-error" data-error="label" hidden></p>
         </div>
         <div class="field">
@@ -323,6 +324,7 @@
         <button type="button" id="link-delete-btn" class="btn danger" hidden>刪除連結</button>
         <span class="spacer"></span>
         <button type="button" id="link-cancel-btn" class="btn quiet">取消</button>
+        <button type="button" id="link-save-next-btn" class="btn quiet">儲存並再加一個</button>
         <button type="submit" class="btn primary">儲存</button>
       </div>
     </form>

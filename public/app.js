@@ -244,24 +244,26 @@ function buildCards() {
     card.links.push(link);
   }
   if (['all', 'default', 'active'].includes(state.linkFilter)) {
+    // 店家卡片固定列出後台（系統網址）、GitHub、Railway、官網；有填的才顯示，已經存成連結的不重複。
     for (const store of state.stores) {
-      if (store.status === 'ended' || !store.url) continue;
+      if (store.status === 'ended') continue;
+      const entries = [['後台', store.url], ['GitHub', store.github_url], ['Railway', store.railway_url], ['官網', store.website]].filter(([, url]) => url);
+      if (!entries.length) continue;
       const card = cardFor(`store:${store.id}`, { category: STORE_CATEGORY, title: store.name, store });
-      if (!card.links.some((link) => link.url === store.url)) {
-        card.links.unshift({ synthetic: true, id: null, title: store.name, label: '店家網站', url: store.url, category: STORE_CATEGORY, description: '', tags: '', note: '', status: 'active', pinned: false, store_id: store.id });
-      }
+      const missing = entries.filter(([, url]) => !card.links.some((link) => link.url === url));
+      card.links.unshift(...missing.map(([label, url]) => ({ synthetic: true, id: null, title: store.name, label, url, category: STORE_CATEGORY, description: '', tags: '', note: '', status: 'active', pinned: false, store_id: store.id })));
     }
   }
   for (const card of cards.values()) {
     const real = card.links.filter((link) => !link.synthetic);
     card.pinned = real.length > 0 && real.every((link) => link.pinned);
-    card.description = card.links.map((link) => link.description).find(Boolean) || (card.store ? typeLabel(card.store.system_type) : '');
+    card.description = card.links.map((link) => link.description).find(Boolean) || '';
   }
   return [...cards.values()];
 }
 
 const cardText = (card) => [
-  card.title, card.category, card.description, card.store ? typeLabel(card.store.system_type) : '',
+  card.title, card.category, card.description,
   ...card.links.flatMap((link) => [link.label, link.tags, link.description, hostOf(link.url)]),
 ].filter(Boolean).join('\n').toLowerCase();
 
@@ -367,12 +369,12 @@ function showLinkErrors(fields = {}, general = '') {
   box.hidden = !box.textContent;
 }
 
-function openLinkDialog(link) {
+function openLinkDialog(link, preset = null) {
   editingLink = link ?? null;
   $('#link-dialog-title').textContent = link ? `編輯連結：${link.title}` : '新增連結';
   // 正在看某個分類時按「新增連結」，分類預設帶入那一個。
   const category = state.linkCategory !== 'all' && state.linkCategory !== UNCATEGORIZED ? state.linkCategory : '';
-  const values = link ?? { title: '', label: '', url: '', category, description: '', tags: '', note: '', status: 'active', pinned: false, store_id: null };
+  const values = link ?? { title: '', label: '', url: '', category, description: '', tags: '', note: '', status: 'active', pinned: false, store_id: null, ...(preset ?? {}) };
   const f = linkForm.elements;
   for (const key of ['title', 'label', 'url', 'description', 'tags', 'note', 'status']) f[key].value = values[key];
   f.pinned.checked = values.pinned;
@@ -387,7 +389,7 @@ function openLinkDialog(link) {
   $('#link-delete-btn').hidden = !link;
   showLinkErrors();
   linkDialog.showModal();
-  f.title.focus();
+  (preset ? f.label : f.title).focus();
 }
 
 function readLinkForm() {
@@ -406,21 +408,36 @@ $('#l-category').addEventListener('change', (event) => {
   if (!input.hidden) input.focus();
 });
 
-linkForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const values = readLinkForm();
+// 存檔；成功回傳 true，失敗在表單上顯示錯誤並回傳 false。
+async function saveLink(values) {
   let result;
   if (editingLink) {
     // 只送出有改的欄位。
     const changed = Object.fromEntries(Object.entries(values).filter(([key, value]) => value !== editingLink[key]));
-    if (!Object.keys(changed).length) { linkDialog.close(); return; }
+    if (!Object.keys(changed).length) return true;
     result = await api(`/api/links/${editingLink.id}`, { method: 'PATCH', body: changed });
   } else {
     result = await api('/api/links', { method: 'POST', body: values });
   }
-  if (!result.ok) { showLinkErrors(result.data.fields, result.data.fields ? '' : result.data.error); return; }
+  if (!result.ok) { showLinkErrors(result.data.fields, result.data.fields ? '' : result.data.error); return false; }
+  return true;
+}
+
+linkForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!(await saveLink(readLinkForm()))) return;
   linkDialog.close();
   await load();
+});
+
+// 儲存後直接再開一個同項目的新連結（項目名稱、分類、所屬店家、釘選都帶入），只要再填連結名稱和網址。
+$('#link-save-next-btn').addEventListener('click', async () => {
+  if (!linkForm.reportValidity()) return;
+  const values = readLinkForm();
+  if (!(await saveLink(values))) return;
+  linkDialog.close();
+  await load();
+  openLinkDialog(null, { title: values.title, category: values.category, store_id: values.store_id, pinned: values.pinned });
 });
 
 $('#link-cancel-btn').addEventListener('click', () => linkDialog.close());
