@@ -347,15 +347,10 @@ function renderLinks() {
   renderCategoryFilters(cards);
 
   const inCategory = state.linkCategory === 'all' ? cards : cards.filter((card) => card.category === state.linkCategory);
-  // 常用區只在看「全部」且沒有搜尋時出現；清單裡就不再重複列出釘選的項目。
-  const showPinned = state.linkCategory === 'all' && !query;
-  const pinnedCards = showPinned ? inCategory.filter((card) => card.pinned).sort(byTitle) : [];
-  const rest = showPinned ? inCategory.filter((card) => !card.pinned) : inCategory;
-
-  const pinnedBox = $('#link-pinned');
-  pinnedBox.hidden = pinnedCards.length === 0;
-  pinnedBox.replaceChildren();
-  if (pinnedCards.length) pinnedBox.append(h('h2', { class: 'link-section' }, '常用'), h('div', { class: 'link-cards is-pinned' }, pinnedCards.map((card) => linkCard(card))));
+  // 釘選的項目改放在左側邊欄；主畫面照分類列出全部，釘選的在各分類裡排最前面。
+  const rest = inCategory;
+  const pinnedCards = [];
+  $('#link-pinned').hidden = true;
 
   const box = $('#link-list');
   box.replaceChildren();
