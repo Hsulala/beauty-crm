@@ -366,3 +366,105 @@ label { color: var(--ink); }
 .store-links { display: flex; flex-wrap: wrap; gap: 8px; }
 .store-links .link-chip { display: inline-block; padding: 3px 12px; border: 1px solid var(--accent); font-size: 13px; font-weight: 700; text-decoration: none; color: var(--accent); background: transparent; }
 .store-links .link-chip:hover { background: var(--accent); color: #fff; }
+
+/* ===== 主題改版：ClaudeBar 風格（奶油點點底、粗黑框硬陰影、膠囊按鈕、粉彩色塊） =====
+   只影響店家總覽；此區塊放在檔案最後，覆蓋前面的大理石／橘色主題。 */
+:root {
+  --paper: #fcf4e9;
+  --ink: #1b140c;
+  --rule: #1b140c;
+  --muted: #6b665b;
+  --accent: #8570e8;
+  --accent-soft: #ece8ff;
+  --pastel-yellow: #ffe69a;
+  --pastel-mint: #c3ecd9;
+  --pastel-pink: #ffcddc;
+  --pastel-blue: #c9ddff;
+  --pastel-lav: #ddd5ff;
+  --display: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", "Heiti TC", system-ui, sans-serif;
+}
+html {
+  background-color: var(--paper);
+  background-image: radial-gradient(rgba(27, 20, 12, .12) 1.2px, transparent 1.4px);
+  background-size: 22px 22px;
+  background-attachment: fixed;
+}
+::selection { background: var(--pastel-yellow); color: var(--ink); }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+/* 標題：不用斜體大寫，改圓潤粗黑體，點用粉彩圓點 */
+.kicker { font-family: var(--font); font-weight: 800; letter-spacing: .14em; font-size: 12.5px; color: var(--ink); display: inline-block; background: var(--pastel-yellow); border: 2px solid var(--ink); border-radius: 999px; padding: 1px 12px; margin-bottom: 8px; }
+.top h1, .login-card h1 { font-family: var(--font); font-style: normal; font-weight: 900; font-size: 40px; letter-spacing: 0; text-transform: none; }
+.top h1 .dot, .login-card h1 .dot { color: var(--accent); }
+.top h1 .zh, .login-card h1 .zh { font-size: 28px; margin-left: 10px; }
+
+/* 按鈕 */
+.btn { box-shadow: 3px 3px 0 var(--ink); }
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.primary:hover { background: #6f58d6; }
+.btn.quiet { background: var(--pastel-yellow); }
+.btn.danger { background: #fff; }
+
+/* 總覽數字：四張粉彩卡 */
+.stat dd { font-family: var(--font); font-style: normal; font-weight: 900; font-size: 34px; }
+.stat:nth-child(1) { background: var(--pastel-mint); }
+.stat:nth-child(2) { background: var(--pastel-blue); }
+.stat:nth-child(3) { background: var(--pastel-yellow); }
+.stat:nth-child(4) { background: var(--pastel-pink); }
+.stat.is-warn { background: var(--pastel-yellow); }
+.stat.is-warn dd { color: var(--ink); }
+.stat.is-danger { background: var(--pastel-pink); }
+.stat.is-danger dd { color: var(--danger); }
+.attention { background: var(--pastel-yellow); }
+
+/* 分頁、篩選、膠囊 */
+.tab, .filter, .link-filter, .chip, .quick-link, .quick-more { border-color: var(--ink); }
+.tab:hover, .filter:hover, .link-filter:hover, .chip:hover { background: var(--pastel-lav); }
+.tab.is-active, .filter.is-active, .link-filter.is-active { background: var(--accent); color: #fff; border-color: var(--ink); }
+.quick-link:hover { background: var(--pastel-lav); }
+.quick-more:hover { background: transparent; }
+
+/* 卡片：白底粗框硬陰影，hover 微浮起 */
+.store, .type-card, .link-card, .link-scope { transition: transform .08s, box-shadow .08s; }
+.store:hover, .type-card:hover, .link-card:hover { transform: translate(-1px, -1px); box-shadow: 6px 6px 0 var(--ink); }
+.store-icon { border-radius: 14px; }
+.store-icon.is-empty { background: var(--pastel-lav); }
+.type-key { background: var(--pastel-blue); border: 1.5px solid var(--ink); color: var(--ink); font-weight: 700; }
+.type-count { font-family: var(--font); font-style: normal; font-weight: 900; color: var(--accent); }
+.link-section { font-family: var(--font); font-style: normal; font-weight: 900; color: var(--ink); }
+
+/* 狀態徽章：粉彩色塊 */
+.badge { font-weight: 800; }
+.badge.is-running { background: var(--pastel-mint); color: var(--ink); }
+.badge.is-building { background: var(--pastel-blue); color: var(--ink); }
+.badge.is-paused { background: var(--pastel-yellow); color: var(--ink); }
+.badge.is-ended { background: #e4e0d4; color: var(--muted); }
+.tag.is-soon { color: #8a5a08; font-weight: 700; }
+.bar-fill { background: var(--accent); }
+.bar-fill.is-soon { background: #f0b429; }
+.store-url a { color: var(--accent); }
+.link, .link-tool:hover { color: var(--accent); }
+
+/* 店家卡片的後台／GitHub／Railway 入口 */
+.store-links .link-chip { border: 2px solid var(--ink); border-radius: 999px; color: var(--ink); background: #fff; box-shadow: 2px 2px 0 var(--ink); }
+.store-links .link-chip:hover { background: var(--pastel-lav); color: var(--ink); }
+
+.link-pinned { background: var(--pastel-lav); }
+.link-filter .count { border: 1.5px solid var(--ink); background: #fff; }
+.link-filter.is-active .count { background: #fff; }
+
+/* 表單與對話框 */
+dialog { background: #fffdf6; }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.module-group { font-family: var(--font); letter-spacing: .08em; text-transform: none; color: var(--ink); font-size: 13.5px; font-weight: 800; }
+.module-row { background: #fff; }
+.module-row:has(input:checked) { background: var(--pastel-mint); }
+.module-row input, .check-row input { accent-color: var(--accent); }
+.remote-number strong { font-family: var(--font); font-style: normal; font-weight: 900; color: var(--accent); }
+.login-card { background: #fffdf6; }
+.audit summary, .import-box summary { color: var(--ink); }
+
+@media (max-width: 860px) {
+  .top h1 { font-size: 32px; }
+  .top h1 .zh { font-size: 22px; }
+}
