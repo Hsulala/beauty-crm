@@ -507,3 +507,26 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
   .sidebar { display: none; position: static; margin: 8px 0 0; max-height: none; }
   body.menu-open .sidebar { display: grid; }
 }
+
+
+/* 管理模式、分類拖曳排序、精簡的新增連結表單 */
+.manage-toggle { flex: none; height: 52px; padding: 0 22px; }
+.manage-toggle.is-active { background: var(--accent); color: #fff; }
+.manage-hint { margin: 2px 0 8px; }
+.link-filter.is-sortable { cursor: grab; }
+.link-filter.is-dragging { opacity: .4; }
+.link-filter.is-drop-target { outline: 3px dashed var(--accent); outline-offset: 3px; }
+
+.link-rows { display: grid; gap: 8px; }
+.link-row { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(0, 2fr) auto; gap: 8px; align-items: center; }
+.link-rows.is-single .link-row { grid-template-columns: minmax(0, 1fr) auto; }
+.link-rows.is-single .row-label { display: none; }
+.more-box { border-top: 2px solid var(--rule); padding-top: 10px; }
+.more-box summary { cursor: pointer; font-weight: 700; color: var(--muted); padding: 4px 0; }
+.more-box[open] summary { color: var(--ink); }
+.more-fields { display: grid; gap: 14px; margin-top: 10px; }
+@media (max-width: 860px) {
+  .manage-toggle { height: 40px; }
+  .link-row { grid-template-columns: 1fr auto; }
+  .link-row .row-label { grid-column: 1 / -1; }
+}

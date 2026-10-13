@@ -51,8 +51,10 @@
             <option value="all">全部（含隱藏）</option>
           </select>
         </label>
+        <button type="button" id="link-manage-btn" class="btn manage-toggle" aria-pressed="false">管理</button>
       </div>
       <div id="link-category-filters" class="filters category-filters" role="group" aria-label="依分類篩選"></div>
+      <p id="manage-hint" class="hint manage-hint" hidden>管理模式：拖曳分類按鈕可調整順序（也可按住 Shift 再按左右鍵）；卡片上可編輯、釘選。選取一個分類後可以改名。<button type="button" id="rename-cat-btn" class="link-tool" hidden></button></p>
       <p class="ok-note" id="links-msg" role="status" hidden></p>
       <p class="field-error" id="links-error" role="alert" hidden></p>
       <section id="link-pinned" class="link-pinned" aria-label="常用" hidden></section>
@@ -269,69 +271,68 @@
       <div class="field">
         <label for="l-title">項目名稱</label>
         <input id="l-title" name="title" type="text" maxlength="80" required>
-        <p class="hint">同一個項目有多個連結時，用同樣的名稱、不同的連結名稱分開存。</p>
         <p class="field-error" data-error="title" hidden></p>
       </div>
 
-      <div class="field-row">
-        <div class="field">
-          <label for="l-label">連結名稱</label>
-          <input id="l-label" name="label" type="text" maxlength="30" placeholder="例如：後台">
-          <p class="field-error" data-error="label" hidden></p>
-        </div>
-        <div class="field">
-          <label for="l-status">狀態</label>
-          <select id="l-status" name="status">
-            <option value="active">正常</option>
-            <option value="pending">待處理</option>
-            <option value="hidden">隱藏</option>
-          </select>
-          <p class="field-error" data-error="status" hidden></p>
-        </div>
-      </div>
-
       <div class="field">
-        <label for="l-url">網址</label>
-        <input id="l-url" name="url" type="url" placeholder="https://" maxlength="500" required>
+        <span class="field-label" id="l-links-label">網址</span>
+        <div id="l-rows" class="link-rows is-single" role="group" aria-labelledby="l-links-label"></div>
+        <p class="field-error" data-error="label" hidden></p>
         <p class="field-error" data-error="url" hidden></p>
+        <div><button type="button" id="l-add-row" class="link-tool">＋ 再加一個連結（同一個項目有多個網址時用）</button></div>
       </div>
 
-      <div class="field-row">
-        <div class="field">
-          <label for="l-category">分類</label>
-          <select id="l-category" name="category"></select>
-          <input id="l-category-new" type="text" maxlength="30" placeholder="輸入新分類名稱" autocomplete="off" hidden>
-          <p class="field-error" data-error="category" hidden></p>
+      <div class="field">
+        <label for="l-category">分類</label>
+        <select id="l-category" name="category"></select>
+        <input id="l-category-new" type="text" maxlength="30" placeholder="輸入新分類名稱" autocomplete="off" hidden>
+        <p class="field-error" data-error="category" hidden></p>
+      </div>
+
+      <details id="l-more" class="more-box">
+        <summary>更多設定（狀態、店家、標籤、說明、備註、釘選）</summary>
+        <div class="more-fields">
+          <div class="field-row">
+            <div class="field">
+              <label for="l-status">狀態</label>
+              <select id="l-status" name="status">
+                <option value="active">正常</option>
+                <option value="pending">待處理</option>
+                <option value="hidden">隱藏</option>
+              </select>
+              <p class="field-error" data-error="status" hidden></p>
+            </div>
+            <div class="field">
+              <label for="l-store_id">所屬店家</label>
+              <select id="l-store_id" name="store_id"></select>
+              <p class="field-error" data-error="store_id" hidden></p>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="l-tags">標籤（用逗號分開）</label>
+            <input id="l-tags" name="tags" type="text" maxlength="100">
+            <p class="field-error" data-error="tags" hidden></p>
+          </div>
+
+          <div class="field">
+            <label for="l-description">說明</label>
+            <input id="l-description" name="description" type="text" maxlength="200">
+            <p class="field-error" data-error="description" hidden></p>
+          </div>
+
+          <div class="field">
+            <label for="l-note">備註</label>
+            <textarea id="l-note" name="note" rows="3" maxlength="2000"></textarea>
+            <p class="field-error" data-error="note" hidden></p>
+          </div>
+
+          <label class="check-row">
+            <input id="l-pinned" name="pinned" type="checkbox">
+            <span>釘選在最前面</span>
+          </label>
         </div>
-        <div class="field">
-          <label for="l-store_id">所屬店家</label>
-          <select id="l-store_id" name="store_id"></select>
-          <p class="field-error" data-error="store_id" hidden></p>
-        </div>
-      </div>
-
-      <div class="field">
-        <label for="l-tags">標籤（用逗號分開）</label>
-        <input id="l-tags" name="tags" type="text" maxlength="100">
-        <p class="field-error" data-error="tags" hidden></p>
-      </div>
-
-      <div class="field">
-        <label for="l-description">說明</label>
-        <input id="l-description" name="description" type="text" maxlength="200">
-        <p class="field-error" data-error="description" hidden></p>
-      </div>
-
-      <div class="field">
-        <label for="l-note">備註</label>
-        <textarea id="l-note" name="note" rows="3" maxlength="2000"></textarea>
-        <p class="field-error" data-error="note" hidden></p>
-      </div>
-
-      <label class="check-row">
-        <input id="l-pinned" name="pinned" type="checkbox">
-        <span>釘選在最前面</span>
-      </label>
+      </details>
 
       <p class="field-error" id="link-form-error" role="alert" hidden></p>
 

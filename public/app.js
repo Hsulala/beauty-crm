@@ -45,7 +45,7 @@ async function api(path, { method = 'GET', body } = {}) {
 
 const state = {
   stores: [], types: [], links: [], summary: null, audit: [], filter: 'all', view: 'stores',
-  linkFilter: 'default', linkCategory: 'all', linkQuery: '',
+  linkFilter: 'default', linkCategory: 'all', linkQuery: '', linkManage: false, categoryOrder: [],
 };
 
 const typeOf = (key) => state.types.find((type) => type.key === key);
@@ -216,11 +216,48 @@ const UNCATEGORIZED = '未分類';
 const zhSort = (a, b) => a.localeCompare(b, 'zh-Hant');
 const storeById = (id) => state.stores.find((store) => store.id === id);
 
-// 固定的分類在前，資料裡出現的其他分類（例如舊 Linkbase 匯入的）接在後面，才不會有連結點不到。
+// 預設：固定的分類在前，資料裡出現的其他分類（例如舊 Linkbase 匯入的）接在後面，才不會有連結點不到。
+// 管理模式拖曳過的順序（state.categoryOrder）優先；沒被排過的分類維持預設順序接在後面。
 function categoryList() {
   const extras = new Set();
   for (const link of state.links) if (link.category && !STANDARD_CATEGORIES.includes(link.category)) extras.add(link.category);
-  return [...STANDARD_CATEGORIES, ...[...extras].sort(zhSort)];
+  // 存過順序之後，以存的清單為準（改名、合併掉的舊名稱才不會又冒出來）；店家系統永遠在。
+  const base = state.categoryOrder.length
+    ? [...new Set([...state.categoryOrder, STORE_CATEGORY, ...[...extras].sort(zhSort)])]
+    : [...STANDARD_CATEGORIES, ...[...extras].sort(zhSort)];
+  const rank = (name) => { const index = state.categoryOrder.indexOf(name); return index < 0 ? 1e9 : index; };
+  return base.map((name, index) => [name, index]).sort((a, b) => (rank(a[0]) - rank(b[0])) || a[1] - b[1]).map(([name]) => name);
+}
+
+async function renameCategory(from) {
+  const input = prompt(`把分類「${from}」改成：\n（填已存在的分類名稱就會合併）`, from);
+  const to = input?.trim();
+  if (!to || to === from) return;
+  if (to === UNCATEGORIZED || to === STORE_CATEGORY) { showLinksNote('#links-error', `不能改成「${to}」`); return; }
+  const names = categoryList();
+  if (names.includes(to) && !confirm(`已經有「${to}」這個分類，「${from}」底下的連結會全部併進去。確定嗎？`)) return;
+  const result = await api('/api/link-categories/rename', { method: 'PATCH', body: { from, to } });
+  if (!result.ok) { showLinksNote('#links-error', result.data.error ?? '改名失敗，請稍後再試'); return; }
+  const next = [...new Set(names.map((name) => (name === from ? to : name)))];
+  const saved = await api('/api/link-categories/order', { method: 'PUT', body: { order: next } });
+  showLinksNote('#links-error', saved.ok ? '' : (saved.data.error ?? '儲存分類順序失敗'));
+  state.linkCategory = state.linkCategory === from ? to : state.linkCategory;
+  showLinksNote('#links-msg', `已把「${from}」改成「${to}」。`);
+  await load();
+}
+
+let draggingCategory = null;
+async function moveCategory(from, to) {
+  const names = categoryList();
+  const i = names.indexOf(from), j = names.indexOf(to);
+  if (i < 0 || j < 0 || i === j) return;
+  const [moved] = names.splice(i, 1);
+  names.splice(j, 0, moved);
+  state.categoryOrder = names;
+  renderLinks();
+  const result = await api('/api/link-categories/order', { method: 'PUT', body: { order: names } });
+  showLinksNote('#links-error', result.ok ? '' : (result.data.error ?? '儲存分類順序失敗，請稍後再試'));
+  if (!result.ok) await load();
 }
 
 function visibleByStatus(link, filter = state.linkFilter) {
@@ -275,11 +312,41 @@ function renderCategoryFilters(cards) {
   for (const card of cards) counts.set(card.category, (counts.get(card.category) ?? 0) + 1);
   const names = [...categoryList(), ...(counts.has(UNCATEGORIZED) ? [UNCATEGORIZED] : [])];
   if (state.linkCategory !== 'all' && !names.includes(state.linkCategory)) state.linkCategory = 'all';
-  const button = (name, label, count) => h('button', {
-    type: 'button', class: `link-filter${state.linkCategory === name ? ' is-active' : ''}`, 'aria-pressed': String(state.linkCategory === name),
-    onclick: () => { state.linkCategory = name; renderLinks(); },
-  }, label, count > 0 && h('span', { class: 'count' }, String(count)));
-  box.replaceChildren(button('all', '全部', cards.length), ...names.map((name) => button(name, name, counts.get(name) ?? 0)));
+  const button = (name, label, count, sortable = false) => {
+    const node = h('button', {
+      type: 'button', class: `link-filter${state.linkCategory === name ? ' is-active' : ''}`, 'aria-pressed': String(state.linkCategory === name),
+      onclick: () => { state.linkCategory = name; renderLinks(); },
+    }, label, count > 0 && h('span', { class: 'count' }, String(count)));
+    if (sortable && state.linkManage) {
+      node.draggable = true;
+      node.classList.add('is-sortable');
+      node.addEventListener('dragstart', (event) => { draggingCategory = name; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', name); node.classList.add('is-dragging'); });
+      node.addEventListener('dragend', () => { draggingCategory = null; node.classList.remove('is-dragging'); });
+      node.addEventListener('dragover', (event) => { if (draggingCategory && draggingCategory !== name) { event.preventDefault(); node.classList.add('is-drop-target'); } });
+      node.addEventListener('dragleave', () => node.classList.remove('is-drop-target'));
+      node.addEventListener('drop', (event) => { event.preventDefault(); node.classList.remove('is-drop-target'); if (draggingCategory) moveCategory(draggingCategory, name); });
+      node.addEventListener('keydown', async (event) => {
+        if (!event.shiftKey || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+        const list = categoryList();
+        const target = list[list.indexOf(name) + (event.key === 'ArrowLeft' ? -1 : 1)];
+        if (!target) return;
+        event.preventDefault();
+        await moveCategory(name, target);
+        [...$('#link-category-filters').children].find((child) => child.firstChild?.textContent === name)?.focus();
+      });
+    }
+    return node;
+  };
+  box.replaceChildren(button('all', '全部', cards.length), ...names.map((name) => button(name, name, counts.get(name) ?? 0, name !== UNCATEGORIZED)));
+  $('#manage-hint').hidden = !state.linkManage;
+  const renamable = state.linkManage && state.linkCategory !== 'all' && state.linkCategory !== UNCATEGORIZED && state.linkCategory !== STORE_CATEGORY;
+  const renameBtn = $('#rename-cat-btn');
+  renameBtn.hidden = !renamable;
+  renameBtn.textContent = renamable ? `重新命名「${state.linkCategory}」` : '';
+  const toggle = $('#link-manage-btn');
+  toggle.textContent = state.linkManage ? '完成' : '管理';
+  toggle.classList.toggle('is-active', state.linkManage);
+  toggle.setAttribute('aria-pressed', String(state.linkManage));
 }
 
 async function setPinned(card, pinned) {
@@ -376,6 +443,13 @@ function linkCard(card) {
   const first = card.links[0];
   const open = (link) => ({ href: link.url, target: '_blank', rel: 'noopener noreferrer', title: hostOf(link.url) });
   const editable = !many && !first.synthetic ? first : null;
+  // 平常只有「店家頁」這類看資料的入口；釘選、編輯、管理店家要按右上角「管理」才會出現。
+  const footTools = [
+    state.linkManage && h('button', { type: 'button', class: 'link-tool', onclick: () => setPinned(card, !card.pinned) }, card.pinned ? '取消釘選' : '釘選'),
+    state.linkManage && editable && h('button', { type: 'button', class: 'link-tool', onclick: () => openLinkDialog(editable) }, '編輯'),
+    card.store && remoteSupported(card.store) && h('button', { type: 'button', class: 'link-tool', onclick: () => openRemote(card.store) }, '店家頁'),
+    state.linkManage && card.store && h('button', { type: 'button', class: 'link-tool', onclick: () => openDialog(card.store) }, '管理店家'),
+  ].filter(Boolean);
   return h('article', { class: `link-card status-${first.status}` },
     h('div', { class: 'link-head' },
       h('h3', {}, many ? card.title : h('a', { class: 'card-title-link', ...open(first) }, card.title)),
@@ -384,17 +458,39 @@ function linkCard(card) {
     many && h('ul', { class: 'link-urls' }, card.links.map((link) => h('li', {},
       h('a', { class: 'quick-link', ...open(link) }, link.label || hostOf(link.url)),
       link.status !== 'active' && h('span', { class: 'hint' }, LINK_STATUS_LABEL[link.status]),
-      !link.synthetic && h('button', { type: 'button', class: 'link-tool', onclick: () => openLinkDialog(link) }, '編輯')))),
-    h('div', { class: 'link-foot' },
-      h('button', { type: 'button', class: 'link-tool', onclick: () => setPinned(card, !card.pinned) }, card.pinned ? '取消釘選' : '釘選'),
-      editable && h('button', { type: 'button', class: 'link-tool', onclick: () => openLinkDialog(editable) }, '編輯'),
-      card.store && remoteSupported(card.store) && h('button', { type: 'button', class: 'link-tool', onclick: () => openRemote(card.store) }, '店家頁'),
-      card.store && h('button', { type: 'button', class: 'link-tool', onclick: () => openDialog(card.store) }, '管理店家')));
+      state.linkManage && !link.synthetic && h('button', { type: 'button', class: 'link-tool', onclick: () => openLinkDialog(link) }, '編輯')))),
+    footTools.length > 0 && h('div', { class: 'link-foot' }, footTools));
 }
 
 const linkDialog = $('#link-dialog');
 const linkForm = $('#link-form');
 let editingLink = null;
+
+const rowsBox = $('#l-rows');
+const moreBox = $('#l-more');
+const MAX_ROWS = 6;
+
+// 連結列：預設只有一列（網址）；按「再加一個連結」才出現連結名稱欄，用來分辨同一項目的多個網址。
+function syncRows() {
+  const rows = [...rowsBox.querySelectorAll('.link-row')];
+  rowsBox.classList.toggle('is-single', !editingLink && rows.length === 1);
+  rows.forEach((row, index) => { row.querySelector('.row-remove').hidden = editingLink !== null || index === 0; });
+  $('#l-add-row').hidden = editingLink !== null || rows.length >= MAX_ROWS;
+  $('#l-links-label').textContent = rows.length > 1 ? '連結（名稱 + 網址）' : '網址';
+}
+
+function addLinkRow(values = { label: '', url: '' }, { focus = false } = {}) {
+  const label = h('input', { class: 'row-label', type: 'text', maxlength: '30', placeholder: '連結名稱，例如：後台', 'aria-label': '連結名稱', autocomplete: 'off' });
+  const url = h('input', { class: 'row-url', type: 'url', maxlength: '500', placeholder: 'https://', 'aria-label': '網址', autocomplete: 'off' });
+  label.value = values.label ?? '';
+  url.value = values.url ?? '';
+  const row = h('div', { class: 'link-row' }, label, url,
+    h('button', { type: 'button', class: 'link-tool row-remove', onclick: () => { row.remove(); syncRows(); } }, '移除'));
+  rowsBox.append(row);
+  syncRows();
+  if (focus) (rowsBox.querySelectorAll('.link-row').length > 1 ? label : url).focus();
+  return row;
+}
 
 function showLinkErrors(fields = {}, general = '') {
   for (const node of linkForm.querySelectorAll('[data-error]')) {
@@ -406,6 +502,8 @@ function showLinkErrors(fields = {}, general = '') {
   const unmatched = Object.entries(fields).filter(([key]) => !linkForm.querySelector(`[data-error="${key}"]`)).map(([, message]) => message);
   box.textContent = [general, ...unmatched].filter(Boolean).join('；');
   box.hidden = !box.textContent;
+  // 錯誤落在摺起來的「更多設定」裡時自動展開，才看得到。
+  if (moreBox.querySelector('.field-error:not([hidden])')) moreBox.open = true;
 }
 
 function openLinkDialog(link) {
@@ -415,8 +513,11 @@ function openLinkDialog(link) {
   const category = state.linkCategory !== 'all' && state.linkCategory !== UNCATEGORIZED ? state.linkCategory : '';
   const values = link ?? { title: '', label: '', url: '', category, description: '', tags: '', note: '', status: 'active', pinned: false, store_id: null };
   const f = linkForm.elements;
-  for (const key of ['title', 'label', 'url', 'description', 'tags', 'note', 'status']) f[key].value = values[key];
+  for (const key of ['title', 'description', 'tags', 'note', 'status']) f[key].value = values[key];
   f.pinned.checked = values.pinned;
+  rowsBox.replaceChildren();
+  addLinkRow({ label: values.label, url: values.url });
+  moreBox.open = Boolean(link && (link.status !== 'active' || link.store_id != null || link.tags || link.description || link.note || link.pinned));
   f.store_id.replaceChildren(h('option', { value: '' }, '（不屬於任何店家）'), ...state.stores.map((store) => h('option', { value: String(store.id) }, store.name)));
   f.store_id.value = values.store_id == null ? '' : String(values.store_id);
   const categories = categoryList();
@@ -435,11 +536,13 @@ function readLinkForm() {
   const f = linkForm.elements;
   const category = f.category.value === '__new__' ? $('#l-category-new').value.trim() : f.category.value;
   return {
-    title: f.title.value.trim(), label: f.label.value.trim(), url: f.url.value.trim(), category,
+    title: f.title.value.trim(), category,
     description: f.description.value.trim(), tags: f.tags.value.trim(), note: f.note.value.trim(), status: f.status.value,
     pinned: f.pinned.checked, store_id: f.store_id.value === '' ? null : Number(f.store_id.value),
   };
 }
+
+$('#l-add-row').addEventListener('click', () => addLinkRow(undefined, { focus: true }));
 
 $('#l-category').addEventListener('change', (event) => {
   const input = $('#l-category-new');
@@ -450,16 +553,33 @@ $('#l-category').addEventListener('change', (event) => {
 linkForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const values = readLinkForm();
-  let result;
+  const rows = [...rowsBox.querySelectorAll('.link-row')].map((row) => ({ row, label: row.querySelector('.row-label').value.trim(), url: row.querySelector('.row-url').value.trim() }));
   if (editingLink) {
     // 只送出有改的欄位。
-    const changed = Object.fromEntries(Object.entries(values).filter(([key, value]) => value !== editingLink[key]));
+    const all = { ...values, label: rows[0].label, url: rows[0].url };
+    const changed = Object.fromEntries(Object.entries(all).filter(([key, value]) => value !== editingLink[key]));
     if (!Object.keys(changed).length) { linkDialog.close(); return; }
-    result = await api(`/api/links/${editingLink.id}`, { method: 'PATCH', body: changed });
-  } else {
-    result = await api('/api/links', { method: 'POST', body: values });
+    const result = await api(`/api/links/${editingLink.id}`, { method: 'PATCH', body: changed });
+    if (!result.ok) { showLinkErrors(result.data.fields, result.data.fields ? '' : result.data.error); return; }
+    linkDialog.close();
+    await load();
+    return;
   }
-  if (!result.ok) { showLinkErrors(result.data.fields, result.data.fields ? '' : result.data.error); return; }
+  // 新增：每一列各存成一個連結，共用項目名稱與其他設定。沒填的多餘列直接略過。
+  const pending = rows.filter((entry, index) => index === 0 || entry.url || entry.label);
+  let created = 0;
+  for (const entry of pending) {
+    const result = await api('/api/links', { method: 'POST', body: { ...values, label: entry.label, url: entry.url } });
+    if (!result.ok) {
+      const where = pending.length > 1 ? `第 ${created + 1} 個未存的連結：` : '';
+      showLinkErrors(result.data.fields, result.data.fields ? '' : `${where}${result.data.error ?? '儲存失敗'}`);
+      if (created) { await load(); showLinkErrors(result.data.fields, `已先存好 ${created} 個連結，其餘請修正後再按儲存。`); }
+      return;
+    }
+    created += 1;
+    if (rowsBox.querySelectorAll('.link-row').length > 1) entry.row.remove();
+    syncRows();
+  }
   linkDialog.close();
   await load();
 });
@@ -477,6 +597,8 @@ $('#link-delete-btn').addEventListener('click', async () => {
 });
 
 $('#add-link-btn').addEventListener('click', () => openLinkDialog(null));
+$('#rename-cat-btn').addEventListener('click', () => renameCategory(state.linkCategory));
+$('#link-manage-btn').addEventListener('click', () => { state.linkManage = !state.linkManage; renderLinks(); renderSidebar(); });
 $('#link-search').addEventListener('input', (event) => { state.linkQuery = event.target.value; renderLinks(); });
 $('#link-status').addEventListener('change', (event) => { state.linkFilter = event.target.value; renderLinks(); });
 // 按「/」直接跳到搜尋框（正在輸入文字時不攔截）。
@@ -530,7 +652,8 @@ function setView(view) {
 function renderAll() { renderSummary(); renderAttention(); renderList(); renderTypes(); renderLinks(); renderSidebar(); renderAudit(); }
 
 async function load() {
-  const [stores, summary, audit, types, links] = await Promise.all([api('/api/stores'), api('/api/summary'), api('/api/audit?limit=30'), api('/api/types'), api('/api/links')]);
+  const [stores, summary, audit, types, links, categories] = await Promise.all([api('/api/stores'), api('/api/summary'), api('/api/audit?limit=30'), api('/api/types'), api('/api/links'), api('/api/link-categories')]);
+  state.categoryOrder = categories.data.order ?? [];
   state.types = types.data.types ?? [];
   state.links = links.data.links ?? [];
   state.stores = stores.data.stores ?? [];

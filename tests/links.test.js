@@ -158,3 +158,41 @@ test('側邊欄順序：pin_order 預設 0，可修改，並影響清單排序�
   assert.deepEqual((await app.request('/api/links')).json.links.map((link) => link.title), ['B', 'A']);
   for (const bad of [-1, 1.5, '3', 100001]) assert.equal((await app.request(`/api/links/${a.id}`, { method: 'PATCH', body: { pin_order: bad } })).status, 400, String(bad));
 }));
+
+test('分類順序：預設為空，存了之後照順序回傳並整份覆蓋', () => withApp(async (app) => {
+  assert.deepEqual((await app.request('/api/link-categories')).json.order, []);
+  const saved = await app.request('/api/link-categories/order', { method: 'PUT', body: { order: ['工具', '表格', '工具', ' 文件 '] } });
+  assert.equal(saved.status, 200);
+  assert.deepEqual(saved.json.order, ['工具', '表格', '文件']);
+  assert.deepEqual((await app.request('/api/link-categories')).json.order, ['工具', '表格', '文件']);
+  await app.request('/api/link-categories/order', { method: 'PUT', body: { order: ['文件'] } });
+  assert.deepEqual((await app.request('/api/link-categories')).json.order, ['文件']);
+}));
+
+test('分類順序：格式不對被擋、未登入不能存取', async () => {
+  const app = await startApp();
+  try {
+    assert.equal((await app.request('/api/link-categories', { auth: false })).status, 401);
+    assert.equal((await app.request('/api/link-categories/order', { method: 'PUT', body: { order: [] }, auth: false })).status, 401);
+    await app.login();
+    for (const order of ['x', [1], [''], ['a'.repeat(31)], Array.from({ length: 101 }, (_, i) => `c${i}`)]) {
+      assert.equal((await app.request('/api/link-categories/order', { method: 'PUT', body: { order } })).status, 400, JSON.stringify(order).slice(0, 30));
+    }
+  } finally { await app.stop(); }
+});
+
+test('分類改名：連結一起改、順序跟著走，改成已存在的分類就合併', () => withApp(async (app) => {
+  for (const [title, category] of [['A', '文件'], ['B', '常用文件'], ['C', '工具']]) {
+    await app.request('/api/links', { method: 'POST', body: { title, url: `https://${title}.example`, category } });
+  }
+  await app.request('/api/link-categories/order', { method: 'PUT', body: { order: ['工具', '文件', '常用文件'] } });
+  const renamed = await app.request('/api/link-categories/rename', { method: 'PATCH', body: { from: '常用文件', to: '文件' } });
+  assert.equal(renamed.status, 200);
+  assert.equal(renamed.json.moved, 1);
+  const cats = (await app.request('/api/links')).json.links.map((link) => `${link.title}:${link.category}`).sort();
+  assert.deepEqual(cats, ['A:文件', 'B:文件', 'C:工具']);
+  assert.deepEqual((await app.request('/api/link-categories')).json.order, ['工具', '文件']);
+  for (const body of [{ from: '文件', to: '文件' }, { from: '文件', to: '' }, { from: '店家系統', to: 'x' }, { from: 'x', to: '未分類' }, { from: 'x', to: 'y'.repeat(31) }]) {
+    assert.equal((await app.request('/api/link-categories/rename', { method: 'PATCH', body })).status, 400, JSON.stringify(body));
+  }
+}));

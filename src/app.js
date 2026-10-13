@@ -196,6 +196,45 @@ export function createApp({ db, config }) {
     response.json({ links: rows });
   });
 
+  // 分類按鈕的順序：整份覆蓋，順序即陣列順序。
+  app.get('/api/link-categories', async (request, response) => {
+    const { rows } = await db.query('SELECT name FROM link_category_order ORDER BY position');
+    response.json({ order: rows.map((row) => row.name) });
+  });
+
+  app.put('/api/link-categories/order', async (request, response) => {
+    const names = request.body?.order;
+    if (!Array.isArray(names) || names.length > 100 || names.some((name) => typeof name !== 'string' || !name.trim() || name.trim().length > 30)) {
+      return fail(response, 400, '分類順序格式不正確');
+    }
+    const unique = [...new Set(names.map((name) => name.trim()))];
+    await db.tx(async (tx) => {
+      await tx.query('DELETE FROM link_category_order');
+      for (const [position, name] of unique.entries()) await tx.query('INSERT INTO link_category_order (name, position) VALUES ($1, $2)', [name, position]);
+    });
+    response.json({ order: unique });
+  });
+
+  // 分類改名：底下所有連結一次改；新名稱若已存在就等於合併。店家系統與未分類不能改。
+  app.patch('/api/link-categories/rename', async (request, response) => {
+    const clean = (value) => (typeof value === 'string' ? value.trim() : '');
+    const from = clean(request.body?.from), to = clean(request.body?.to);
+    if (!from || !to || to.length > 30) return fail(response, 400, '分類名稱需為 1 到 30 字');
+    if (from === to) return fail(response, 400, '新名稱和舊名稱相同');
+    if ([from, to].some((name) => name === '店家系統' || name === '未分類')) return fail(response, 400, '「店家系統」與「未分類」不能改名或合併');
+    const moved = await db.tx(async (tx) => {
+      const result = await tx.query('UPDATE links SET category = $2, updated_at = now() WHERE category = $1', [from, to]);
+      const order = (await tx.query('SELECT name FROM link_category_order ORDER BY position')).rows.map((row) => row.name);
+      if (order.includes(from)) {
+        const next = [...new Set(order.map((name) => (name === from ? to : name)))];
+        await tx.query('DELETE FROM link_category_order');
+        for (const [position, name] of next.entries()) await tx.query('INSERT INTO link_category_order (name, position) VALUES ($1, $2)', [name, position]);
+      }
+      return result.rowCount;
+    });
+    response.json({ ok: true, moved });
+  });
+
   app.post('/api/links', async (request, response) => {
     const { value, errors } = parseLink(request.body, { partial: false });
     if (value.store_id != null && !errors.store_id && !(await storeExists(value.store_id))) errors.store_id = NO_STORE;
