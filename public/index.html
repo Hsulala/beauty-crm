@@ -17,10 +17,25 @@
       <button type="button" id="add-link-btn" class="btn primary">新增連結</button>
       <button type="button" id="add-type-btn" class="btn primary" hidden>新增類型</button>
       <button type="button" id="add-btn" class="btn primary" hidden>新增店家</button>
-      <button type="button" id="manage-btn" class="btn">管理</button>
+      <button type="button" id="menu-btn" class="btn menu-btn" aria-expanded="false" aria-controls="sidebar">選單</button>
       <button type="button" id="logout-btn" class="btn quiet">登出</button>
     </div>
   </header>
+
+  <div class="shell">
+  <aside id="sidebar" class="sidebar" aria-label="側邊選單">
+    <nav class="side-nav" aria-label="主要頁面">
+      <button type="button" id="home-btn" class="side-item is-active">入口</button>
+      <button type="button" id="manage-btn" class="side-item">店家與合約</button>
+      <button type="button" id="types-btn" class="side-item">系統類型</button>
+    </nav>
+    <div class="side-head">
+      <h2>常用入口</h2>
+      <button type="button" id="side-edit-btn" class="link-tool" hidden>調整</button>
+    </div>
+    <ul id="side-pinned" class="side-pinned"></ul>
+    <p id="side-empty" class="hint" hidden>還沒有釘選。在連結卡片上按「釘選」，就會出現在這裡。</p>
+  </aside>
 
   <main>
     <div id="view-links">
@@ -55,7 +70,7 @@
 
     <div id="manage" hidden>
     <nav class="tabs" role="group" aria-label="管理">
-      <button type="button" class="tab is-active" data-view="stores">店家管理</button>
+      <button type="button" class="tab is-active" data-view="stores">店家清單</button>
       <button type="button" class="tab" data-view="types">系統類型</button>
     </nav>
 
@@ -86,6 +101,7 @@
     </details>
     </div>
   </main>
+  </div>
 
   <dialog id="store-dialog" aria-labelledby="dialog-title">
     <form id="store-form" novalidate>

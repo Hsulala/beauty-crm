@@ -148,3 +148,13 @@ test('匯入：同一批裡網址重複的只收一筆', () => withApp(async (ap
   assert.equal(result.json.imported, 1);
   assert.equal(result.json.duplicates, 1);
 }));
+
+test('側邊欄順序：pin_order 預設 0，可修改，並影響清單排序；不合法的值會被擋下', () => withApp(async (app) => {
+  const a = (await app.request('/api/links', { method: 'POST', body: { title: 'A', url: 'https://a.example', pinned: true } })).json;
+  const b = (await app.request('/api/links', { method: 'POST', body: { title: 'B', url: 'https://b.example', pinned: true } })).json;
+  assert.equal(a.pin_order, 0);
+  assert.equal((await app.request(`/api/links/${a.id}`, { method: 'PATCH', body: { pin_order: 20 } })).json.pin_order, 20);
+  assert.equal((await app.request(`/api/links/${b.id}`, { method: 'PATCH', body: { pin_order: 10 } })).json.pin_order, 10);
+  assert.deepEqual((await app.request('/api/links')).json.links.map((link) => link.title), ['B', 'A']);
+  for (const bad of [-1, 1.5, '3', 100001]) assert.equal((await app.request(`/api/links/${a.id}`, { method: 'PATCH', body: { pin_order: bad } })).status, 400, String(bad));
+}));

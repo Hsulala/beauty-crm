@@ -68,9 +68,11 @@ function renderSummary() {
   const { summary } = state;
   if (!summary) return;
   const stat = (label, value, hint, tone) => h('div', { class: `stat${tone ? ` is-${tone}` : ''}` },
-    h('dt', {}, label), h('dd', {}, value), hint && h('p', { class: 'hint' }, hint));
+    h('dt', {}, label), h('dd', {}, value), hint && (typeof hint === 'string' ? h('p', { class: 'hint' }, hint) : hint));
+  const counts = summary.counts;
+  const breakdown = h('div', { class: 'stat-chips' }, [`共 ${counts.total} 家`, `建置 ${counts.building}`, `暫停 ${counts.paused}`, `結束 ${counts.ended}`].map((text) => h('span', {}, text)));
   box.append(h('dl', { class: 'stats' },
-    stat('運作中', `${summary.counts.running} 家`, `共 ${summary.counts.total} 家，建置中 ${summary.counts.building}、暫停 ${summary.counts.paused}、已結束 ${summary.counts.ended}`),
+    stat('運作中', `${summary.counts.running} 家`, breakdown),
     stat('每月經常性收入', money(summary.mrr), '只計運作中的店家'),
     stat('30 日內到期', `${summary.expiringSoon} 家`, '不含已結束的店家', summary.expiringSoon ? 'warn' : ''),
     stat('合約已過期', `${summary.expired} 家`, '請確認是否續約或改為已結束', summary.expired ? 'danger' : ''),
@@ -221,29 +223,29 @@ function categoryList() {
   return [...STANDARD_CATEGORIES, ...[...extras].sort(zhSort)];
 }
 
-function visibleByStatus(link) {
-  if (state.linkFilter === 'all') return true;
-  if (state.linkFilter === 'default') return link.status !== 'hidden';
-  return link.status === state.linkFilter;
+function visibleByStatus(link, filter = state.linkFilter) {
+  if (filter === 'all') return true;
+  if (filter === 'default') return link.status !== 'hidden';
+  return link.status === filter;
 }
 
 // 同一個項目（同分類、同名稱）的多個連結合成一張卡；屬於某家店的連結一律併進該店那張卡。
 // 店家自己的網址若還沒有對應的連結，補一個「店家網站」讓它也能從入口點進去。
-function buildCards() {
+function buildCards(filter = state.linkFilter) {
   const cards = new Map();
   const cardFor = (key, seed) => {
     if (!cards.has(key)) cards.set(key, { key, links: [], ...seed });
     return cards.get(key);
   };
   for (const link of state.links) {
-    if (!visibleByStatus(link)) continue;
+    if (!visibleByStatus(link, filter)) continue;
     const store = link.store_id == null ? null : storeById(link.store_id);
     const card = store
       ? cardFor(`store:${store.id}`, { category: STORE_CATEGORY, title: store.name, store })
       : cardFor(`${link.category}\u0000${link.title}`, { category: link.category || UNCATEGORIZED, title: link.title, store: null });
     card.links.push(link);
   }
-  if (['all', 'default', 'active'].includes(state.linkFilter)) {
+  if (['all', 'default', 'active'].includes(filter)) {
     for (const store of state.stores) {
       if (store.status === 'ended' || !store.url) continue;
       const card = cardFor(`store:${store.id}`, { category: STORE_CATEGORY, title: store.name, store });
@@ -292,6 +294,50 @@ async function setPinned(card, pinned) {
   const bad = results.find((result) => !result.ok);
   showLinksNote('#links-error', bad ? (bad.data.fields ? Object.values(bad.data.fields).join('、') : (bad.data.error ?? '操作失敗，請稍後再試')) : '');
   await load();
+}
+
+// ---------- 側邊欄：常用入口（沿用釘選，順序存在 pin_order） ----------
+const sideState = { editing: false };
+
+function pinnedCards() {
+  const orderOf = (card) => Math.min(...card.links.filter((link) => !link.synthetic).map((link) => link.pin_order ?? 0));
+  return buildCards('default').filter((card) => card.pinned).sort((a, b) => orderOf(a) - orderOf(b) || byTitle(a, b));
+}
+
+async function moveSide(index, step) {
+  const cards = pinnedCards();
+  const target = index + step;
+  if (target < 0 || target >= cards.length) return;
+  [cards[index], cards[target]] = [cards[target], cards[index]];
+  const calls = [];
+  cards.forEach((card, position) => {
+    for (const link of card.links) {
+      if (!link.synthetic && link.pin_order !== position * 10) calls.push(api(`/api/links/${link.id}`, { method: 'PATCH', body: { pin_order: position * 10 } }));
+    }
+  });
+  const results = await Promise.all(calls);
+  const bad = results.find((result) => !result.ok);
+  showLinksNote('#links-error', bad ? (bad.data.error ?? '調整順序失敗，請稍後再試') : '');
+  await load();
+}
+
+function renderSidebar() {
+  const list = $('#side-pinned');
+  const cards = pinnedCards();
+  list.replaceChildren();
+  $('#side-empty').hidden = cards.length > 0;
+  $('#side-edit-btn').hidden = cards.length === 0;
+  $('#side-edit-btn').textContent = sideState.editing ? '完成' : '調整';
+  cards.forEach((card, index) => {
+    // 有多個連結時，標題直接進「後台」，沒有就進第一個；其餘連結在卡片上找。
+    const primary = card.links.find((link) => link.label === '後台') ?? card.links[0];
+    list.append(h('li', { class: 'side-row' },
+      h('a', { class: 'side-link', href: primary.url, target: '_blank', rel: 'noopener noreferrer', title: hostOf(primary.url) }, card.title),
+      sideState.editing && h('span', { class: 'side-tools' },
+        h('button', { type: 'button', class: 'side-mini', 'aria-label': `${card.title} 上移`, disabled: index === 0, onclick: () => moveSide(index, -1) }, '上移'),
+        h('button', { type: 'button', class: 'side-mini', 'aria-label': `${card.title} 下移`, disabled: index === cards.length - 1, onclick: () => moveSide(index, 1) }, '下移'),
+        h('button', { type: 'button', class: 'side-mini', 'aria-label': `${card.title} 取消釘選`, onclick: () => setPinned(card, false) }, '移除'))));
+  });
 }
 
 function renderLinks() {
@@ -479,12 +525,14 @@ function setView(view) {
   $('#add-link-btn').hidden = manage;
   $('#add-btn').hidden = view !== 'stores';
   $('#add-type-btn').hidden = view !== 'types';
-  $('#manage-btn').textContent = manage ? '回到入口' : '管理';
+  for (const [id, target] of [['#home-btn', 'links'], ['#manage-btn', 'stores'], ['#types-btn', 'types']]) $(id).classList.toggle('is-active', view === target);
+  document.body.classList.remove('menu-open');
+  $('#menu-btn').setAttribute('aria-expanded', 'false');
   for (const tab of document.querySelectorAll('.tab')) tab.classList.toggle('is-active', tab.dataset.view === view);
   window.scrollTo(0, 0);
 }
 
-function renderAll() { renderSummary(); renderAttention(); renderList(); renderTypes(); renderLinks(); renderAudit(); }
+function renderAll() { renderSummary(); renderAttention(); renderList(); renderTypes(); renderLinks(); renderSidebar(); renderAudit(); }
 
 async function load() {
   const [stores, summary, audit, types, links] = await Promise.all([api('/api/stores'), api('/api/summary'), api('/api/audit?limit=30'), api('/api/types'), api('/api/links')]);
@@ -894,7 +942,14 @@ $('#type-delete-btn').addEventListener('click', async () => {
 });
 
 for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => setView(tab.dataset.view));
-$('#manage-btn').addEventListener('click', () => setView(state.view === 'links' ? 'stores' : 'links'));
+$('#home-btn').addEventListener('click', () => setView('links'));
+$('#manage-btn').addEventListener('click', () => setView('stores'));
+$('#types-btn').addEventListener('click', () => setView('types'));
+$('#side-edit-btn').addEventListener('click', () => { sideState.editing = !sideState.editing; renderSidebar(); });
+$('#menu-btn').addEventListener('click', () => {
+  const open = document.body.classList.toggle('menu-open');
+  $('#menu-btn').setAttribute('aria-expanded', String(open));
+});
 $('#add-type-btn').addEventListener('click', () => openTypeDialog(null));
 
 $('#add-btn').addEventListener('click', () => openDialog(null));

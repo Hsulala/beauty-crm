@@ -187,12 +187,12 @@ export function createApp({ db, config }) {
 
   // ---- 連結（原 Linkbase：後台、部署、文件入口）----
   // 刻意不存帳號密碼；匯入備份檔時帳號密碼會被丟掉，只回報有幾筆帶了帳密，提醒改放密碼管理器。
-  const LINK_COLUMNS = 'id, title, label, url, category, description, tags, note, status, pinned, store_id, created_at, updated_at';
+  const LINK_COLUMNS = 'id, title, label, url, category, description, tags, note, status, pinned, pin_order, store_id, created_at, updated_at';
   const NO_STORE = '沒有這家店';
   const storeExists = async (id) => (await db.query('SELECT 1 FROM stores WHERE id = $1', [id])).rows.length > 0;
 
   app.get('/api/links', async (request, response) => {
-    const { rows } = await db.query(`SELECT ${LINK_COLUMNS} FROM links ORDER BY pinned DESC, lower(category), lower(title), lower(label), id`);
+    const { rows } = await db.query(`SELECT ${LINK_COLUMNS} FROM links ORDER BY pinned DESC, pin_order, lower(category), lower(title), lower(label), id`);
     response.json({ links: rows });
   });
 

@@ -10,7 +10,7 @@ import { MIGRATIONS, startApp } from './helpers/app.js';
 test('migration：第二次執行不會重跑，資料表都建好了', async () => {
   const db = await createPgliteDb();
   try {
-    assert.deepEqual(await migrate(db, MIGRATIONS), ['001_init.sql', '002_store_remote.sql', '003_store_icon.sql', '004_system_types.sql', '005_links.sql', '006_store_icon_sync.sql', '007_store_website.sql', '008_store_dev_links.sql']);
+    assert.deepEqual(await migrate(db, MIGRATIONS), ['001_init.sql', '002_store_remote.sql', '003_store_icon.sql', '004_system_types.sql', '005_links.sql', '006_store_icon_sync.sql', '007_store_website.sql', '008_store_dev_links.sql', '009_link_pin_order.sql']);
     assert.deepEqual(await migrate(db, MIGRATIONS), []);
     const tables = (await db.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")).rows.map((r) => r.table_name);
     for (const name of ['stores', 'audit_log', 'schema_migrations', 'store_remote', 'store_icon', 'store_icon_sync', 'system_types', 'links']) assert.ok(tables.includes(name), name);
@@ -80,7 +80,7 @@ test('頁面守門：沒有行內程式、沒有表情符號，且 HTML 用到�
   for (const [, id] of js.matchAll(/\$\('#([\w-]+)'\)/g)) assert.ok(html.includes(`id="${id}"`), `app.js 用到 #${id}，HTML 找不到`);
   for (const key of ['name', 'system_type', 'url', 'status', 'monthly_fee', 'contract_start', 'contract_end', 'notes']) assert.ok(html.includes(`name="${key}"`), `表單缺少欄位 ${key}`);
   // 入口頁：搜尋框、分類按鈕、常用區、清單；店家管理與系統類型收在「管理」裡
-  for (const id of ['link-search', 'link-category-filters', 'link-pinned', 'link-list', 'manage-btn', 'manage']) assert.ok(html.includes(`id="${id}"`), id);
+  for (const id of ['link-search', 'link-category-filters', 'link-pinned', 'link-list', 'manage-btn', 'manage', 'sidebar', 'side-pinned', 'home-btn', 'types-btn', 'menu-btn']) assert.ok(html.includes(`id="${id}"`), id);
   assert.match(html, /<select id="l-category" name="category">/);
   assert.ok(html.indexOf('id="link-search"') < html.indexOf('id="link-category-filters"'), '搜尋框要在分類按鈕上方');
   assert.ok(html.indexOf('id="link-category-filters"') < html.indexOf('id="link-pinned"') && html.indexOf('id="link-pinned"') < html.indexOf('id="link-list"'), '順序：分類、常用、清單');

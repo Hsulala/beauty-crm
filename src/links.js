@@ -40,6 +40,10 @@ const fields = {
     fallback: false,
     parse: (raw) => (typeof raw === 'boolean' ? { value: raw } : { error: '釘選格式不正確' }),
   },
+  pin_order: {
+    fallback: 0,
+    parse: (raw) => (Number.isInteger(raw) && raw >= 0 && raw <= 100000 ? { value: raw } : { error: '順序不正確' }),
+  },
   store_id: {
     fallback: null,
     parse(raw) {
