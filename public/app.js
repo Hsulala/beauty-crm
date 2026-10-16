@@ -7,7 +7,7 @@ const FIELD_LABEL = {
   contract_start: '合約起日', contract_end: '合約到期日', notes: '備註',
 };
 const ACTION_LABEL = {
-  'store.icon': '顧客頁面 Logo', 'store.create': '新增', 'store.update': '修改', 'store.delete': '刪除', 'store.remote_keys': '連線金鑰', 'store.modules': '功能模組',
+  'store.icon': '顧客頁面 Logo', 'store.create': '新增', 'store.update': '修改', 'store.delete': '刪除', 'store.remote_keys': '連線金鑰', 'store.backup': '下載備份', 'store.modules': '功能模組',
   'type.create': '新增類型', 'type.update': '修改類型', 'type.delete': '刪除類型',
   'links.import': '匯入連結',
 };
@@ -831,7 +831,7 @@ async function openRemote(store) {
   $('#remote-title').textContent = `店家頁：${store.name}`;
   $('#remote-sub').textContent = typeLabel(store.system_type);
   for (const id of ['#remote-read-key', '#remote-write-key']) $(id).value = '';
-  for (const id of ['#remote-modules-error', '#remote-modules-ok', '#remote-keys-error']) showMessage(id, '');
+  for (const id of ['#remote-modules-error', '#remote-modules-ok', '#remote-keys-error', '#remote-backup-error', '#remote-backup-ok']) showMessage(id, '');
   $('#remote-stats').replaceChildren(h('p', { class: 'muted' }, '讀取中…'));
   $('#remote-modules').replaceChildren();
   $('#remote-modules-save').disabled = true;
@@ -922,6 +922,7 @@ function renderModules() {
   }
   if (!canEdit) box.append(h('p', { class: 'hint' }, '還沒設定寫入金鑰，目前只能查看。'));
   $('#remote-modules-save').disabled = !canEdit;
+  $('#remote-backup').disabled = !canEdit;
 }
 
 $('#remote-modules-save').addEventListener('click', async () => {
@@ -941,6 +942,32 @@ $('#remote-modules-save').addEventListener('click', async () => {
   await loadOverview();
   await refreshAudit();
   showMessage('#remote-modules-ok', result.data.changed ? '已儲存，店家系統已套用' : '沒有變更');
+});
+
+// 下載備份：向 CRM 要檔案（CRM 再用寫入金鑰向店家系統取），存成 JSON 檔
+$('#remote-backup').addEventListener('click', async () => {
+  const button = $('#remote-backup');
+  showMessage('#remote-backup-error', ''); showMessage('#remote-backup-ok', '');
+  button.disabled = true;
+  try {
+    const response = await fetch(remoteUrl('/backup'), { credentials: 'same-origin' });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      showMessage('#remote-backup-error', data.error || '下載備份失敗，請稍後再試');
+      return;
+    }
+    const blob = await response.blob();
+    const header = response.headers.get('content-disposition') || '';
+    const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header)?.[1];
+    const name = encoded ? decodeURIComponent(encoded) : (/filename="([^"]+)"/.exec(header)?.[1] || 'backup.json');
+    const link = h('a', { href: URL.createObjectURL(blob), download: name });
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    showMessage('#remote-backup-ok', `已下載：${name}`);
+    await refreshAudit();
+  } catch {
+    showMessage('#remote-backup-error', '連不上 CRM，請稍後再試');
+  } finally { button.disabled = !remote.overview?.can_edit; }
 });
 
 $('#remote-keys-save').addEventListener('click', async () => {

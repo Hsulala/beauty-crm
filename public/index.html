@@ -369,6 +369,16 @@
         </div>
       </section>
 
+      <section class="remote-section" aria-labelledby="remote-backup-title">
+        <h3 id="remote-backup-title">資料備份</h3>
+        <p class="hint">更新店家系統前先下載一份。檔案含客人資料與帳號資料，請存在安全的地方。需要寫入金鑰。</p>
+        <p class="field-error" id="remote-backup-error" role="alert" hidden></p>
+        <p class="ok-note" id="remote-backup-ok" role="status" hidden></p>
+        <div class="section-actions">
+          <button type="button" id="remote-backup" class="btn" disabled>下載備份</button>
+        </div>
+      </section>
+
       <section class="remote-section" aria-labelledby="remote-keys-title">
         <h3 id="remote-keys-title">連線金鑰</h3>
         <p class="hint">金鑰要和店家系統（Railway 變數 REMOTE_READ_KEY、REMOTE_WRITE_KEY）一致。儲存後不會再顯示，只能重新輸入或清除。</p>

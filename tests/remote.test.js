@@ -168,3 +168,20 @@ test('刪除店家時金鑰一併刪除', () => withRemote(async ({ app, remote,
   await app.request(`/api/stores/${store.id}`, { method: 'DELETE' });
   assert.equal((await app.db.query('SELECT count(*)::int AS n FROM store_remote')).rows[0].n, 0);
 }));
+
+test('下載備份：用寫入金鑰向店家取整份資料並下載成檔案，留異動紀錄；只有讀取金鑰時不能下載', () => withRemote(async ({ app, fake, remote, store }) => {
+  await remote('', { method: 'PUT', body: { read_key: READ_KEY } });
+  const noWrite = await remote('/backup');
+  assert.equal(noWrite.status, 409);
+  assert.match(noWrite.json.error, /寫入金鑰/);
+  await remote('', { method: 'PUT', body: { write_key: WRITE_KEY } });
+  const result = await remote('/backup');
+  assert.equal(result.status, 200);
+  assert.match(result.headers.get('content-disposition'), /attachment; filename="store-\d+-backup-\d{8}-\d{4}\.json"; filename\*=UTF-8''/);
+  assert.equal(result.json.documents.bookings[0].customer, '王小美');
+  assert.equal(fake.state.requests.at(-1).token, WRITE_KEY, '一定用寫入金鑰');
+  const audit = (await app.request('/api/audit')).json;
+  assert.equal(audit.entries[0].action, 'store.backup');
+  assert.doesNotMatch(JSON.stringify(audit.entries[0]), /王小美/, '異動紀錄不存客人資料');
+  assert.equal((await app.request(`/api/stores/${store.id}/remote/backup`, { auth: false })).status, 401, '未登入不能下載');
+}));

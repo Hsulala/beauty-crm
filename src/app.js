@@ -527,6 +527,28 @@ export function createApp({ db, config }) {
     response.json({ ok: true, changed: Object.keys(changes).length > 0, modules: after.modules });
   });
 
+  // 下載備份：用寫入金鑰向店家系統取得整份資料，直接下載成 JSON 檔。CRM 不留存內容，只記一筆異動紀錄。
+  app.get('/api/stores/:id/remote/backup', async (request, response) => {
+    const ctx = await remoteContext(request, response);
+    if (!ctx || !requireRemote(response, ctx)) return;
+    if (!ctx.keys.write) return fail(response, 409, '還沒設定寫入金鑰，無法下載備份');
+    const data = await callStore({ url: ctx.store.url, key: ctx.keys.write, path: '/api/remote/backup', timeoutMs: 60000 });
+    const body = JSON.stringify(data, null, 2);
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .formatToParts(now()).map((part) => [part.type, part.value]));
+    const stamp = `${parts.year}${parts.month}${parts.day}-${parts.hour}${parts.minute}`;
+    const ascii = `store-${ctx.store.id}-backup-${stamp}.json`;
+    const named = `${ctx.store.name}-備份-${stamp}.json`;
+    await db.query('INSERT INTO audit_log (action, store_id, store_name, detail) VALUES ($1, $2, $3, $4::jsonb)',
+      ['store.backup', ctx.store.id, ctx.store.name, JSON.stringify({ bytes: Buffer.byteLength(body) })]);
+    response.set({
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(named)}`,
+      'Cache-Control': 'no-store',
+    });
+    response.send(body);
+  });
+
   // ---- 顧客頁 Logo（PNG 存在 CRM，並透過寫入金鑰同步到店家系統）----
   const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const ICON_MAX = 200 * 1024;

@@ -27,6 +27,7 @@ export async function startFakeStore({ system = 'heyu' } = {}) {
     if (!role) return send(401, { error: '金鑰不正確' });
     if (request.method === 'GET' && url.pathname === '/api/remote/stats') return send(200, { system, month: url.searchParams.get('month'), bookings: { total: 7, cancelled: 1 } });
     if (request.method === 'GET' && url.pathname === '/api/remote/config') return send(200, { system, modules: state.modules });
+    if (request.method === 'GET' && url.pathname === '/api/remote/backup') return role === 'write' ? send(200, { system, exportedAt: '2026-10-17T00:00:00.000Z', documents: { bookings: [{ id: 'b1', customer: '王小美' }] } }) : send(403, { error: '下載備份需要寫入金鑰' });
     if (request.method === 'GET' && url.pathname === '/api/remote/logo') return send(200, { has_logo: Boolean(state.logo), sha256: state.logo ? createHash('sha256').update(state.logo).digest('hex') : null });
     if (url.pathname === '/api/remote/logo' && (request.method === 'PUT' || request.method === 'DELETE')) {
       if (role !== 'write') return send(403, { error: '這把金鑰只能讀取，不能修改設定' });
