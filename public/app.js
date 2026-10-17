@@ -883,6 +883,16 @@ function renderStats() {
   const { stats, month } = remote.overview;
   if (!stats.ok) { box.replaceChildren(h('p', { class: 'field-error' }, stats.error)); return; }
   const { total, cancelled } = stats.data.bookings;
+  // 客戶開發型（麻辣醬）：主要數字是本月新客戶數，另外列下單訊息數；沒有「已取消」
+  $('#remote-stats-title').textContent = stats.data.system === 'lead' ? '新客戶數' : stats.data.system === 'order' ? '訂單數' : '預約數';
+  if (stats.data.system === 'lead' && stats.data.leads) {
+    const { newCustomers, orderMessages } = stats.data.leads;
+    box.replaceChildren(h('div', { class: 'remote-number' },
+      h('strong', {}, `${newCustomers} 位`),
+      h('span', { class: 'muted' }, `${month} 新客戶`),
+      h('span', { class: 'muted' }, `　下單訊息 ${orderMessages} 則`)));
+    return;
+  }
   const isOrder = stats.data.system === 'order' && stats.data.orders;
   box.replaceChildren(h('div', { class: 'remote-number' },
     h('strong', {}, `${total} 筆`),
@@ -920,6 +930,7 @@ function renderModules() {
       box.append(h('label', { class: `module-row${canEdit ? '' : ' is-locked'}` }, input, h('span', {}, mod.label)));
     }
   }
+  if (!entries.length) box.append(h('p', { class: 'hint' }, '這家店目前沒有可以從這裡開關的功能模組。'));
   if (!canEdit) box.append(h('p', { class: 'hint' }, '還沒設定寫入金鑰，目前只能查看。'));
   $('#remote-modules-save').disabled = !canEdit;
   $('#remote-backup').disabled = !canEdit;
